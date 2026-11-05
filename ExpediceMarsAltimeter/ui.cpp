@@ -135,6 +135,9 @@ static uint32_t s_downAt = 0;
 static bool     s_blip1 = false, s_blip2 = false;
 static bool     s_pendShort = false;
 static uint32_t s_pendAt = 0;
+static bool     s_holdLed = false;    // LED prave ridi odpocet k vypnuti
+static bool     s_holdOn = false;
+static uint32_t s_holdToggle = 0;
 
 static inline bool rawPressed() {
 #if BUTTON_ACTIVE_LOW
@@ -172,6 +175,10 @@ BtnEvent buttonPoll() {
     } else {
       // pusteni - rozhodujeme podle delky drzeni
       uint32_t held = now - s_downAt;
+      if (s_holdLed) {             // konec odpoctu: LED vratime hlavni smycce
+        s_holdLed = false;
+        uiSet(UI_OFF);
+      }
       if (held >= BTN_OFF_MS) return BTN_OFF;
       if (held >= BTN_ARM_MS) return BTN_ARM;
       if (held <= BTN_SHORT_MAX_MS) {
@@ -186,11 +193,36 @@ BtnEvent buttonPoll() {
     }
   }
 
-  // Zpetna vazba behem drzeni: 3 s = "pust a ozbroji se", 8 s = "pust a vypne se"
+  // Zpetna vazba behem drzeni: 3 s = cvrnknuti ("pust a ozbroji se"),
+  // pak LED blika cim dal rychleji, jak se blizi vypnuti, a v 8 s
+  // zustane trvale svitit ("pust a vypne se").
   if (s_down) {
     uint32_t held = now - s_downAt;
     if (!s_blip1 && held >= BTN_ARM_MS) { s_blip1 = true; uiSet(UI_BLIP1); }
-    if (!s_blip2 && held >= BTN_OFF_MS) { s_blip2 = true; uiSet(UI_BLIP2); }
+
+    const uint32_t rampFrom = BTN_ARM_MS + 300;   // nechat dobehnout cvrnknuti
+    if (held >= rampFrom) {
+      if (!s_holdLed) {
+        s_holdLed = true;
+        s_patN = 0;                 // vypnout prehravac vzoru, LED ridime sami
+        s_current = UI_BLIP2;       // != UI_OFF, aby smycka LED neprepsala
+        s_holdOn = true;
+        s_holdToggle = now;
+        ledWrite(true);
+      }
+      if (held >= BTN_OFF_MS) {
+        if (!s_blip2) { s_blip2 = true; s_holdOn = true; ledWrite(true); }
+      } else {
+        float frac = (float)(held - rampFrom) / (float)(BTN_OFF_MS - rampFrom);
+        uint32_t period = BTN_OFF_BLINK_SLOW_MS -
+                          (uint32_t)(frac * (BTN_OFF_BLINK_SLOW_MS - BTN_OFF_BLINK_FAST_MS));
+        if ((now - s_holdToggle) >= period / 2) {
+          s_holdToggle = now;
+          s_holdOn = !s_holdOn;
+          ledWrite(s_holdOn);
+        }
+      }
+    }
   }
 
   // Kratky stisk potvrdime az kdyz uz nemuze prijit druhy klik

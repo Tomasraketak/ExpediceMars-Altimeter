@@ -8,6 +8,7 @@ struct WebRequests {
   bool arm = false;
   bool disarm = false;
   bool sleep = false;
+  bool test = false;      // kalibrace + testovaci let hned
 };
 extern WebRequests webReq;
 

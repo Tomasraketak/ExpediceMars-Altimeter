@@ -35,17 +35,17 @@ pojmenování a export letů. Kód je psaný na co nejnižší spotřebu.
 
 | Další | XIAO ESP32-C6 |
 |---|---|
-| Tlačítko | **D0 (GPIO0)** ↔ GND |
+| Tlačítko SW1 | **D1 (GPIO1)** ↔ GND, R1 10 kΩ pull-up na 3V3 |
 | LED | GPIO15 (na desce, svítí v L) |
 | Baterie | BAT+ / BAT− (1S LiPo) |
 
-**Proč zrovna D0 pro tlačítko:** GPIO0–GPIO7 jsou na ESP32-C6 v LP (RTC) doméně, takže
-dokážou probudit čip z deep sleepu. Zároveň GPIO0 na C6 není strapping pin, takže držení
+**Proč D1 pro tlačítko:** GPIO0–GPIO7 jsou na ESP32-C6 v LP (RTC) doméně, takže
+dokážou probudit čip z deep sleepu. GPIO1 na C6 není strapping pin, takže držení
 tlačítka při zapnutí nerozhodí bootování. Pin jde změnit v `config.h`, ale pro buzení
 z deep sleepu musí zůstat v rozsahu GPIO0–GPIO7.
 
-Tlačítko nepotřebuje žádné externí součástky (používá se vnitřní pull-up). Pro úplnou
-jistotu při deep sleepu můžeš přidat externí **100 kΩ z D0 na 3V3**.
+Na desce je externí pull-up R1 10 kΩ z D1 na 3V3 (navíc se zapíná i vnitřní pull-up).
+Při stisku teče přes R1 ~0,33 mA — jen po dobu držení, v klidu nic.
 
 Adresu BMP580 řešit nemusíš — knihovna sama zkusí 0x46 i 0x47.
 
@@ -60,7 +60,8 @@ V `config.h` jde zapnout:
 - `PIN_BUZZER` — aktivní piezo bzučák. Pípá souběžně s LED, takže raketu v trávě najdeš
   podle vyblikaného/vypípaného apogea.
 - `PIN_VBAT` — měření napětí baterie přes vlastní odporový dělič (XIAO ESP32-C6 nemá
-  dělič k BAT vyvedený na žádný pin). Např. 2× 220 kΩ mezi BAT+ a GND, střed na A1 (GPIO1).
+  dělič k BAT vyvedený na žádný pin). Např. 2× 220 kΩ mezi BAT+ a GND, střed na A2 (GPIO2)
+  (A1/GPIO1 už je tlačítko).
   **GPIO3 a GPIO14 nepoužívej** — ovládají na XIAO VF přepínač antény.
 
 ---
@@ -81,6 +82,20 @@ V `config.h` jde zapnout:
 
 Ostatní volby (CPU frekvence, USB CDC) nech výchozí — frekvenci si nastavuje program sám.
 
+
+### Nejde nahrát nový kód („přístup odepřen“, exit status 2)
+
+ESP32-C6 má USB přímo v čipu. Starší verze firmwaru čip uspávala i s připojeným USB,
+port se pak odpojoval a Windows hlásily *přístup odepřen*. Od této verze se při
+připojeném USB nespí. Na desce se starým firmwarem (nebo když je v deep sleepu) jednou
+použij **ruční bootloader**:
+
+1. Zavři Sériový monitor / Plotter a jiné programy, které můžou držet COM port.
+2. Odpoj USB, **drž tlačítko B (BOOT)** na XIAO, připoj USB a BOOT pusť
+   (nebo: drž BOOT, krátce stiskni R (RESET), pusť BOOT).
+3. V *Nástroje → Port* vyber port, který se teď objevil (může mít jiné číslo COM).
+4. Nahraj. Po nahrání stiskni **RESET**.
+
 ---
 
 ## Ovládání tlačítkem
@@ -90,10 +105,20 @@ Ostatní volby (CPU frekvence, USB CDC) nech výchozí — frekvenci si nastavuj
 | **krátký stisk** | probudí výškoměr / vybliká poslední apogeum |
 | **dvojklik** | zapne nebo vypne WiFi s webem |
 | **držet 3 s** | uloží aktuální výšku jako startovní a **ozbrojí** (po 3 s LED cvrnkne — pak pusť) |
-| **držet 8 s** | vypne (deep sleep); probudí se zase stiskem |
+| **držet 8 s** | vypne (deep sleep); probudí se zase stiskem. Od ~3,3 s LED bliká a **čím dál rychleji**, jak se blíží vypnutí; v 8 s svítí trvale — pak pusť |
 
 Držení delší než 3 s a kratší než 8 s se vyhodnotí **až při puštění**, takže se nedá
-omylem přeskočit — LED ti v 3 s a v 8 s dá vědět, kde jsi.
+omylem přeskočit — LED ti v 3 s cvrnkne a pak zrychlujícím blikáním ukazuje, jak blízko
+je vypnutí. Pustíš-li tlačítko během blikání (3–8 s), výškoměr se ozbrojí.
+
+### Testovací let
+
+Ve webu je tlačítko **Testovací let**. Nastaví současnou výšku jako startovní a **hned**
+spustí záznam — práh startu (+10 m) se přeskočí. Prvních **10 s** je podmínka konce
+záznamu zablokovaná, potom se nevyžaduje apogeum: záznam skončí, jakmile je výška
+< 25 m a mění se pomaleji než 1 m/s po dobu 1 s. Na stole tedy skončí za ~11 s,
+s výškoměrem v ruce nebo ve výtahu tak dlouho, dokud se hýbeš. Let je ve webu označený
+štítkem **„test“** (v hlavičce souboru příznak `0x04`). Během záznamu web neodpovídá.
 
 ### Řeč LED
 
@@ -141,29 +166,32 @@ takže lety zaznamenané po připojení telefonu mají skutečné datum a čas.
 ## Jak to funguje
 
 ```
-IDLE ──(3 s / web: Nulovat+ARM)──► ARMED ──(výška > +25 m)──► ASCENT
+IDLE ──(3 s / web: Nulovat+ARM)──► ARMED ──(výška > +10 m)──► ASCENT
  ▲                                   ▲                          │
  │                                   │              (pokles > 10 m pod maximum)
  │                                   │                          ▼
- └──(po 5 min)── LANDED ◄──(výška stabilní 5 s)── DESCENT ◄─────┘
+ └──(po 5 min)── LANDED ◄──(< 25 m a < 1 m/s po 1 s)── DESCENT ◄┘
 ```
 
 1. **Startovní výška.** Držením tlačítka 3 s (nebo z webu) se zprůměruje 20 vzorků tlaku
    (~2 s) a uloží se do NVS jako referenční tlak startovní plochy. Reference přežije
    odpojení baterie. Výška se pak počítá barometricky **vůči této referenci**, takže se
    neřeší tlak přepočtený na hladinu moře ani jeho změny během dne.
-2. **ARMED.** Měří se 10× za sekundu a drží se **kruhový buffer posledních 15 vzorků**
-   (1,5 s historie). Mezi vzorky čip spí (light sleep).
-3. **Start letu.** Jakmile jsou **dva vzorky po sobě nad +25 m**, začne se zapisovat.
-   Do souboru se nejdřív vysype celý kruhový buffer, takže záznam obsahuje i chvíli
-   **před** startem a celý rozjezd.
+2. **ARMED.** Měří se 10× za sekundu a drží se **kruhový buffer posledních 5 vzorků**
+   (0,5 s historie). Mezi vzorky čip spí (light sleep).
+3. **Start letu.** Jakmile jsou **dva vzorky po sobě nad +10 m**, začne se zapisovat —
+   výška **každých 100 ms** do flash. Do souboru se nejdřív vysype celý kruhový buffer,
+   takže záznam obsahuje i první okamžiky letu **před** překročením prahu.
 4. **Apogeum.** Detekuje se, když aktuální výška klesne o **víc než 10 m** pod dosud
    nejvyšší naměřenou hodnotu tohoto letu. Samotné apogeum je to zaznamenané maximum,
    ne hodnota v okamžiku detekce.
-5. **Přistání.** Po apogeu se sleduje, jestli se výška udrží v pásmu ±2 m po dobu 5 s.
-   Pak se soubor uzavře, dopíše se hlavička se souhrnem a výškoměr se odzbrojí.
+5. **Konec záznamu.** Jen **po apogeu**: výška je **pod 25 m** a zároveň se mění
+   (klesá i stoupá) **pomaleji než 1 m/s**, a to **nepřetržitě aspoň 1 s**. Pak se soubor
+   uzavře, dopíše se hlavička se souhrnem a výškoměr se odzbrojí.
    Tvrdý strop je 10 minut záznamu.
-6. **LANDED.** 5 minut vybliká apogeum a drží se dostupný pro web, pak přejde do IDLE
+6. **Web.** Každý let jde ve webu zobrazit v grafu (výška v čase) a stáhnout jako CSV
+   (`Export CSV`, nebo `CSV pro Excel` s desetinnou čárkou).
+7. **LANDED.** 5 minut vybliká apogeum a drží se dostupný pro web, pak přejde do IDLE
    a po dalších 3 minutách nečinnosti usne do deep sleepu.
 
 Výška se filtruje lehkým EMA filtrem (α = 0,4) a v senzoru je zapnutý mírný hardwarový
@@ -180,15 +208,19 @@ Tohle byl hlavní požadavek, takže je to řešené na třech úrovních:
 | Co | Kam | Jak často | Nejhorší možná ztráta |
 |---|---|---|---|
 | vzorky profilu | LittleFS (flash) | splachuje se do flash **každou 1 s** | ~1 s profilu |
-| apogeum + stav letu | NVS | **co 250 ms**, když maximum vyroste o ≥ 1 m | ~1 m |
+| apogeum + stav letu | NVS | **co 250 ms**, když maximum vyroste o ≥ 0,1 m; při detekci apogea vždy | ~0,1 m / ~350 ms |
+| poslední apogeum (po přistání) | NVS | při uzavření letu | nic |
 | stav „ozbrojeno“ + reference | NVS | při nastavení | nic |
 
 **Po resetu (brownout, vybitá baterka, cuknutí konektorem) se stane tohle:**
 
 1. Při startu se zjistí, že v NVS je rozepsaný let → záznam **pokračuje ve stejném souboru**.
 2. Soubor se projde a zjistí se, co v něm doopravdy je (poslední čas, maximum, max. rychlost).
-   Jako maximum se vezme **to lepší** z NVS a ze souboru — NVS má i to, co se nestihlo
-   zapsat, soubor zase to, co se do NVS nestihlo promítnout.
+   Pokud apogeum ještě nebylo detekované, vezme se jako maximum **to lepší** z NVS a ze
+   souboru. Pokud už bylo, platí hodnota z NVS — při detekci apogea se tam zapisuje vždy
+   a od té chvíle se maximum **zmrazí** (nic naměřeného po apogeu ho už nepřepíše).
+   Kdyby soubor letu chyběl nebo byl poškozený, let se nezahodí — pokračuje se jen
+   s apogeem z NVS (bez profilu).
 3. Časová osa se napojí **za poslední zapsaný vzorek**, takže nikdy neskočí zpátky.
    Do grafu se vloží značka přerušení (v CSV řádek `# --- preruseni zaznamu (reset) ---`).
    Délku výpadku nemá výškoměr jak zjistit (nemá RTC), počítá se s odhadem 300 ms.
@@ -198,8 +230,14 @@ Tohle byl hlavní požadavek, takže je to řešené na třech úrovních:
 Když se výškoměr **resetuje na rampě** (ozbrojený, let ještě nezačal), naběhne zase
 ozbrojený a se stejnou referencí — nemusíš nic mačkat.
 
-Když **nedojde k obnově vůbec** (třeba se vybije baterka a zapneš to až doma), let se
-uzavře během ~5 s po zapnutí a apogeum zůstane to poslední naměřené před výpadkem.
+Když **nedojde k obnově hned** (při dopadu se vypojí baterka a zapneš to až doma), let se
+uzavře zhruba 1 s po zapnutí (pokud je výška vůči startovišti pod 25 m, jinak až po 10min limitu) a apogeum zůstane to naměřené před výpadkem. Díky zmrazení
+maxima po apogeu ho nepřepíše ani „falešná výška“ způsobená jinou nadmořskou výškou
+nebo změnou počasí doma.
+
+**Nepřečtené apogeum:** dokud apogeum někdo neviděl (krátký stisk tlačítka nebo nové
+ozbrojení), výškoměr ho po každém zapnutí / resetu rovnou bliká (režim LANDED, 5 min).
+Reset po přistání ani vypojená baterka tak o výsledek nepřipraví.
 
 ---
 
@@ -236,11 +274,12 @@ Všechno podstatné je v `config.h`:
 
 | Parametr | Výchozí | Co dělá |
 |---|---|---|
-| `DEF_LAUNCH_ALT_M` | 25 m | práh startu nad startovní plochou |
+| `DEF_LAUNCH_ALT_M` | 10 m | práh startu nad startovní plochou |
 | `DEF_APOGEE_DROP_M` | 10 m | pokles pod maximum pro detekci apogea |
-| `PRELOG_SAMPLES` | 15 | kruhový buffer před startem |
+| `PRELOG_SAMPLES` | 5 | kruhový buffer před startem |
 | `SAMPLE_PERIOD_MS` | 100 | perioda vzorkování za letu |
-| `LAND_BAND_M` / `LAND_STABLE_MS` | 2 m / 5 s | kdy je to přistání |
+| `LAND_ALT_M` / `LAND_SPEED_MS` / `LAND_STABLE_MS` | 25 m / 1 m/s / 1 s | konec záznamu (jen po apogeu) |
+| `TEST_LAND_BLOCK_MS` | 10 s | testovací let: jak dlouho je konec zablokovaný |
 | `MAX_FLIGHT_MS` | 10 min | tvrdý strop délky záznamu |
 | `LOG_FLUSH_MS` | 1000 | jak často do flash |
 | `PROGRESS_SAVE_MS` | 250 | jak často záloha apogea do NVS |
@@ -267,7 +306,7 @@ hlavička: magic "EAM1" (u32), verze (u8), příznaky (u8), id (u16), unixový �
 vzorek:   čas od začátku letu v ms (u32), výška nad startem v m (f32)
 ```
 
-Příznaky: `0x01` = let řádně uzavřen, `0x02` = záznam pokračoval po resetu.
+Příznaky: `0x01` = let řádně uzavřen, `0x02` = záznam pokračoval po resetu, `0x04` = testovací let.
 Vzorek s výškou `NaN` je značka přerušení záznamu. Případný název letu je vedle
 v `/fNNNN.nam`, takže přejmenování nikdy nesáhne na naměřená data.
 
@@ -300,6 +339,10 @@ Co je hotové a ověřené:
 
 - **Překlad** pro `XIAO_ESP32C6`, esp32 core 3.3.11, `-Wall -Wextra` bez jediného warningu.
   Zabere 1 330 kB programu (63 % z 2 MB) a 48 kB RAM.
+> Pozn.: ověření níže proběhlo na původní verzi (práh 25 m, buffer 15 vzorků, přistání
+> ±2 m / 5 s). Aktuální verze (10 m, 5 vzorků, konec < 25 m a < 1 m/s po 1 s) zatím
+> přeložená ani simulovaná nebyla.
+
 - **Letová logika** byla prohnaná simulátorem na PC, který pouští **skutečný stavový
   automat** z `ExpediceMarsAltimeter.ino` proti simulované trajektorii (motor 0,8 s,
   apogeum 234,4 m, výsadek 5 m/s). Ověřeno:

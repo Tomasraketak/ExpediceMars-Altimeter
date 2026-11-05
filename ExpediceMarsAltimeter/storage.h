@@ -15,6 +15,7 @@
 
 #define FF_FINALIZED 0x01   // let byl radne uzavren (hlavicka je platna)
 #define FF_RECOVERED 0x02   // zaznam pokracoval po resetu
+#define FF_TEST      0x04   // testovaci let
 
 struct __attribute__((packed)) FlightHeader {
   uint32_t magic;
@@ -47,7 +48,9 @@ void   cfgSavePad(float pa);
 void   cfgSaveArmed(bool armed);
 void   cfgSaveTunables();                 // padMsl, launchAltM, apogeeDropM
 void   cfgSaveAp(const String &ssid, const String &pass);
-void   cfgSaveLast(uint16_t id, float apogee);
+void   cfgSaveLast(uint16_t id, float apogee);   // + oznaci apogeum jako neprectene
+bool   cfgLastUnread();                         // posledni apogeum jeste nikdo nevidel
+void   cfgAckLast();                            // uzivatel apogeum videl
 String cfgApSsid();
 String cfgApPass();
 
@@ -58,7 +61,7 @@ uint16_t progressFlightId();              // id letu prerusaneho resetem (0 = za
 void     progressRestore();               // natahne maxAlt/apogeeDone/... do st
 
 // ---------- zapis letu ----------
-uint16_t logStart(uint32_t epochAtT0);    // zalozi novy soubor, vrati id (0 = chyba)
+uint16_t logStart(uint32_t epochAtT0, bool test);  // zalozi novy soubor, vrati id (0 = chyba)
 // Co se da vycist z uz zapsane casti letu pri navazani po resetu
 struct ResumeInfo {
   uint32_t lastT = 0;      // cas posledniho zapsaneho vzorku

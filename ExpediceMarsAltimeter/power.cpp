@@ -8,6 +8,7 @@
 #include <esp_sleep.h>
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include <driver/usb_serial_jtag.h>
 
 // =====================================================================
 //  Sprava napajeni
@@ -41,7 +42,20 @@ void powerBegin() {
   btStop();                   // Bluetooth nikdy nepouzijeme
 }
 
+// ESP32-C6 ma USB primo v cipu (USB-Serial/JTAG). Ve spanku se USB odpoji,
+// port ve Windows "zamrzne" a nahrani noveho kodu skonci chybou typu
+// "pristup odepren". Proto kdyz je pripojeny pocitac, vubec nespime.
+bool usbConnected() {
+#if USB_NO_SLEEP
+  return usb_serial_jtag_is_connected();
+#else
+  return false;
+#endif
+}
+
 void lightSleepFor(uint32_t ms) {
+  if (usbConnected()) { delay(ms < 10 ? ms : 10); return; }
+
   // Drzene tlacitko musime hlidat casteji, nez by nas probudil timer
   if (buttonIsDown()) { delay(ms < 10 ? ms : 10); return; }
 

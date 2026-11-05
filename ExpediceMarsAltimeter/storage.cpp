@@ -110,6 +110,16 @@ void cfgSaveLast(uint16_t id, float apogee) {
   if (!s_prefsOk) return;
   prefs.putUShort("lastId", id);
   prefs.putFloat("lastApo", apogee);
+  prefs.putBool("lastNew", true);
+}
+
+bool cfgLastUnread() {
+  return s_prefsOk && prefs.getBool("lastNew", false);
+}
+
+void cfgAckLast() {
+  if (!s_prefsOk || !prefs.getBool("lastNew", false)) return;
+  prefs.putBool("lastNew", false);
 }
 
 String cfgApSsid() {
@@ -138,7 +148,7 @@ String cfgApPass() {
 struct __attribute__((packed)) Progress {
   uint16_t id;
   uint8_t  apogeeDone;
-  uint8_t  rsv;
+  uint8_t  test;       // testovaci let
   float    maxAlt;
   uint32_t maxAltT;
   uint32_t t;
@@ -161,7 +171,7 @@ void progressSave(bool force) {
   Progress p;
   p.id = st.flightId;
   p.apogeeDone = st.apogeeDone ? 1 : 0;
-  p.rsv = 0;
+  p.test = st.testFlight ? 1 : 0;
   p.maxAlt = st.maxAlt;
   p.maxAltT = st.maxAltT;
   p.t = st.flightT;
@@ -200,6 +210,7 @@ void progressRestore() {
   st.maxAltT    = p.maxAltT;
   st.flightT    = p.t;
   st.apogeeDone = p.apogeeDone != 0;
+  st.testFlight = p.test != 0;
   st.maxSpeed   = p.maxSpeed;
   if (p.padPa > 1000.0f) st.padPa = p.padPa;  // referenci bereme tu, se kterou let zacal
   s_lastSavedMax = st.maxAlt;
@@ -218,7 +229,7 @@ static void writeHeader(File &f, const FlightHeader &h) {
   f.write((const uint8_t *)&h, sizeof h);
 }
 
-uint16_t logStart(uint32_t epochAtT0) {
+uint16_t logStart(uint32_t epochAtT0, bool test) {
   if (!s_prefsOk) return 0;
   if (s_log) s_log.close();
 
@@ -241,7 +252,7 @@ uint16_t logStart(uint32_t epochAtT0) {
   FlightHeader h = {};
   h.magic = FLIGHT_MAGIC;
   h.version = FLIGHT_VER;
-  h.flags = 0;
+  h.flags = test ? FF_TEST : 0;
   h.id = id;
   h.epoch = epochAtT0;
   h.padPa = st.padPa;

@@ -81,6 +81,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;margin-top:20px}
     <button id="barm">Odzbrojit</button>
   </div>
   <div class="row" style="margin-top:8px">
+    <button class="sm" id="btest">Testovací let</button>
     <button class="sm" id="bsleep">Uspat výškoměr</button>
     <button class="sm" id="brel">Obnovit</button>
   </div>
@@ -178,6 +179,7 @@ async function flights(){
   if(!l.length){box.innerHTML='<div class="muted">Zatím žádný let. Ozbroj výškoměr a leť!</div>';return;}
   box.innerHTML=l.map(f=>`<div class="fl" data-id="${f.id}">
     <div class="meta"><div class="nm">${f.name||('Let č. '+f.id)}
+      ${f.test?'<span class="tag">test</span>':''}
       ${f.recovered?'<span class="tag">obnoveno po resetu</span>':''}
       ${f.done?'':'<span class="tag">nedokončeno</span>'}</div>
       <div class="sub">${when(f.epoch)} · ${dur(f.dur)} · ${f.samples} vzorků</div></div>
@@ -263,11 +265,13 @@ $('#ddel').onclick=async()=>{if(!confirm('Opravdu smazat let č. '+cur.id+'?'))r
 $('#bzero').onclick=async()=>{if(!confirm('Nastavit současnou výšku jako startovní a ozbrojit?'))return;
   await api('/api/zero',{method:'POST'});$('#hint').textContent='Kalibruji referenci…';setTimeout(status,3000);};
 $('#barm').onclick=async()=>{await api('/api/arm?on=0',{method:'POST'});setTimeout(status,300);};
+$('#btest').onclick=async()=>{if(!confirm('Nastavit současnou výšku jako startovní a hned spustit testovací záznam?\nKonec nejdřív po 10 s, až bude výška < 25 m a změna < 1 m/s po 1 s. Web během záznamu neodpovídá.'))return;
+  await api('/api/test',{method:'POST'});$('#hint').textContent='Kalibruji a spouštím testovací let…';setTimeout(()=>{status();flights();},15000);};
 $('#bsleep').onclick=async()=>{if(!confirm('Uspat výškoměr? Probudíš ho stiskem tlačítka.'))return;
   await api('/api/sleep',{method:'POST'});};
 $('#brel').onclick=()=>{status();flights();};
 $('#bsave').onclick=async()=>{
-  const q='padMsl='+(+$('#cMsl').value||0)+'&launchM='+(+$('#cLaunch').value||25)
+  const q='padMsl='+(+$('#cMsl').value||0)+'&launchM='+(+$('#cLaunch').value||10)
     +'&apoDrop='+(+$('#cApo').value||10)+'&ssid='+encodeURIComponent($('#cSsid').value)
     +'&pass='+encodeURIComponent($('#cPass').value);
   await api('/api/settings?'+q,{method:'POST'});$('#cPass').value='';alert('Uloženo. Změna WiFi se projeví po restartu AP.');status();};
