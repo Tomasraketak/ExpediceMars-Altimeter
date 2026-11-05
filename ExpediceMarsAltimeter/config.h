@@ -90,6 +90,9 @@
 #define LANDED_AWAKE_MS    300000UL // po pristani 5 min blika apogeum, pak IDLE
 #define AP_TIMEOUT_MS      300000UL // 5 min bez HTTP pozadavku -> vypnout AP
 #define ARMED_TIMEOUT_MS        0UL // 0 = v ARMED nikdy sam neusne
+// 1 = kdyz je pripojeny USB k pocitaci, nepouziva se light ani automaticky
+// deep sleep (jinak se USB port odpojuje a nejde nahrat novy kod)
+#define USB_NO_SLEEP            1
 
 // ---------------------- TLACITKO ----------------------
 

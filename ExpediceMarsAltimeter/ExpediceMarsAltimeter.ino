@@ -386,13 +386,13 @@ static void autoTimeouts() {
   if (st.mode == MODE_LANDED && (now - st.landedAt) > LANDED_AWAKE_MS) {
     setMode(MODE_IDLE);
   }
-  if (st.mode == MODE_IDLE && !webActive() && !st.armed &&
+  if (st.mode == MODE_IDLE && !webActive() && !st.armed && !usbConnected() &&
       (now - st.lastActivity) > IDLE_TO_SLEEP_MS) {
     Serial.println("[power] necinnost -> deep sleep");
     enterDeepSleep();
   }
 #if ARMED_TIMEOUT_MS > 0
-  if (st.mode == MODE_ARMED && (now - st.lastActivity) > ARMED_TIMEOUT_MS) {
+  if (st.mode == MODE_ARMED && !usbConnected() && (now - st.lastActivity) > ARMED_TIMEOUT_MS) {
     enterDeepSleep();
   }
 #endif

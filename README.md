@@ -82,6 +82,20 @@ V `config.h` jde zapnout:
 
 Ostatní volby (CPU frekvence, USB CDC) nech výchozí — frekvenci si nastavuje program sám.
 
+
+### Nejde nahrát nový kód („přístup odepřen“, exit status 2)
+
+ESP32-C6 má USB přímo v čipu. Starší verze firmwaru čip uspávala i s připojeným USB,
+port se pak odpojoval a Windows hlásily *přístup odepřen*. Od této verze se při
+připojeném USB nespí. Na desce se starým firmwarem (nebo když je v deep sleepu) jednou
+použij **ruční bootloader**:
+
+1. Zavři Sériový monitor / Plotter a jiné programy, které můžou držet COM port.
+2. Odpoj USB, **drž tlačítko B (BOOT)** na XIAO, připoj USB a BOOT pusť
+   (nebo: drž BOOT, krátce stiskni R (RESET), pusť BOOT).
+3. V *Nástroje → Port* vyber port, který se teď objevil (může mít jiné číslo COM).
+4. Nahraj. Po nahrání stiskni **RESET**.
+
 ---
 
 ## Ovládání tlačítkem
