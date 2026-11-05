@@ -267,7 +267,7 @@ $('#bsleep').onclick=async()=>{if(!confirm('Uspat výškoměr? Probudíš ho sti
   await api('/api/sleep',{method:'POST'});};
 $('#brel').onclick=()=>{status();flights();};
 $('#bsave').onclick=async()=>{
-  const q='padMsl='+(+$('#cMsl').value||0)+'&launchM='+(+$('#cLaunch').value||25)
+  const q='padMsl='+(+$('#cMsl').value||0)+'&launchM='+(+$('#cLaunch').value||10)
     +'&apoDrop='+(+$('#cApo').value||10)+'&ssid='+encodeURIComponent($('#cSsid').value)
     +'&pass='+encodeURIComponent($('#cPass').value);
   await api('/api/settings?'+q,{method:'POST'});$('#cPass').value='';alert('Uloženo. Změna WiFi se projeví po restartu AP.');status();};

@@ -142,29 +142,32 @@ takže lety zaznamenané po připojení telefonu mají skutečné datum a čas.
 ## Jak to funguje
 
 ```
-IDLE ──(3 s / web: Nulovat+ARM)──► ARMED ──(výška > +25 m)──► ASCENT
+IDLE ──(3 s / web: Nulovat+ARM)──► ARMED ──(výška > +10 m)──► ASCENT
  ▲                                   ▲                          │
  │                                   │              (pokles > 10 m pod maximum)
  │                                   │                          ▼
- └──(po 5 min)── LANDED ◄──(výška stabilní 5 s)── DESCENT ◄─────┘
+ └──(po 5 min)── LANDED ◄──(< 25 m a < 1 m/s po 1 s)── DESCENT ◄┘
 ```
 
 1. **Startovní výška.** Držením tlačítka 3 s (nebo z webu) se zprůměruje 20 vzorků tlaku
    (~2 s) a uloží se do NVS jako referenční tlak startovní plochy. Reference přežije
    odpojení baterie. Výška se pak počítá barometricky **vůči této referenci**, takže se
    neřeší tlak přepočtený na hladinu moře ani jeho změny během dne.
-2. **ARMED.** Měří se 10× za sekundu a drží se **kruhový buffer posledních 15 vzorků**
-   (1,5 s historie). Mezi vzorky čip spí (light sleep).
-3. **Start letu.** Jakmile jsou **dva vzorky po sobě nad +25 m**, začne se zapisovat.
-   Do souboru se nejdřív vysype celý kruhový buffer, takže záznam obsahuje i chvíli
-   **před** startem a celý rozjezd.
+2. **ARMED.** Měří se 10× za sekundu a drží se **kruhový buffer posledních 5 vzorků**
+   (0,5 s historie). Mezi vzorky čip spí (light sleep).
+3. **Start letu.** Jakmile jsou **dva vzorky po sobě nad +10 m**, začne se zapisovat —
+   výška **každých 100 ms** do flash. Do souboru se nejdřív vysype celý kruhový buffer,
+   takže záznam obsahuje i první okamžiky letu **před** překročením prahu.
 4. **Apogeum.** Detekuje se, když aktuální výška klesne o **víc než 10 m** pod dosud
    nejvyšší naměřenou hodnotu tohoto letu. Samotné apogeum je to zaznamenané maximum,
    ne hodnota v okamžiku detekce.
-5. **Přistání.** Po apogeu se sleduje, jestli se výška udrží v pásmu ±2 m po dobu 5 s.
-   Pak se soubor uzavře, dopíše se hlavička se souhrnem a výškoměr se odzbrojí.
+5. **Konec záznamu.** Jen **po apogeu**: výška je **pod 25 m** a zároveň se mění
+   (klesá i stoupá) **pomaleji než 1 m/s**, a to **nepřetržitě aspoň 1 s**. Pak se soubor
+   uzavře, dopíše se hlavička se souhrnem a výškoměr se odzbrojí.
    Tvrdý strop je 10 minut záznamu.
-6. **LANDED.** 5 minut vybliká apogeum a drží se dostupný pro web, pak přejde do IDLE
+6. **Web.** Každý let jde ve webu zobrazit v grafu (výška v čase) a stáhnout jako CSV
+   (`Export CSV`, nebo `CSV pro Excel` s desetinnou čárkou).
+7. **LANDED.** 5 minut vybliká apogeum a drží se dostupný pro web, pak přejde do IDLE
    a po dalších 3 minutách nečinnosti usne do deep sleepu.
 
 Výška se filtruje lehkým EMA filtrem (α = 0,4) a v senzoru je zapnutý mírný hardwarový
@@ -204,7 +207,7 @@ Když se výškoměr **resetuje na rampě** (ozbrojený, let ještě nezačal), 
 ozbrojený a se stejnou referencí — nemusíš nic mačkat.
 
 Když **nedojde k obnově hned** (při dopadu se vypojí baterka a zapneš to až doma), let se
-uzavře během ~5 s po zapnutí a apogeum zůstane to naměřené před výpadkem. Díky zmrazení
+uzavře zhruba 1 s po zapnutí (pokud je výška vůči startovišti pod 25 m, jinak až po 10min limitu) a apogeum zůstane to naměřené před výpadkem. Díky zmrazení
 maxima po apogeu ho nepřepíše ani „falešná výška“ způsobená jinou nadmořskou výškou
 nebo změnou počasí doma.
 
@@ -247,11 +250,11 @@ Všechno podstatné je v `config.h`:
 
 | Parametr | Výchozí | Co dělá |
 |---|---|---|
-| `DEF_LAUNCH_ALT_M` | 25 m | práh startu nad startovní plochou |
+| `DEF_LAUNCH_ALT_M` | 10 m | práh startu nad startovní plochou |
 | `DEF_APOGEE_DROP_M` | 10 m | pokles pod maximum pro detekci apogea |
-| `PRELOG_SAMPLES` | 15 | kruhový buffer před startem |
+| `PRELOG_SAMPLES` | 5 | kruhový buffer před startem |
 | `SAMPLE_PERIOD_MS` | 100 | perioda vzorkování za letu |
-| `LAND_BAND_M` / `LAND_STABLE_MS` | 2 m / 5 s | kdy je to přistání |
+| `LAND_ALT_M` / `LAND_SPEED_MS` / `LAND_STABLE_MS` | 25 m / 1 m/s / 1 s | konec záznamu (jen po apogeu) |
 | `MAX_FLIGHT_MS` | 10 min | tvrdý strop délky záznamu |
 | `LOG_FLUSH_MS` | 1000 | jak často do flash |
 | `PROGRESS_SAVE_MS` | 250 | jak často záloha apogea do NVS |
@@ -311,6 +314,10 @@ Co je hotové a ověřené:
 
 - **Překlad** pro `XIAO_ESP32C6`, esp32 core 3.3.11, `-Wall -Wextra` bez jediného warningu.
   Zabere 1 330 kB programu (63 % z 2 MB) a 48 kB RAM.
+> Pozn.: ověření níže proběhlo na původní verzi (práh 25 m, buffer 15 vzorků, přistání
+> ±2 m / 5 s). Aktuální verze (10 m, 5 vzorků, konec < 25 m a < 1 m/s po 1 s) zatím
+> přeložená ani simulovaná nebyla.
+
 - **Letová logika** byla prohnaná simulátorem na PC, který pouští **skutečný stavový
   automat** z `ExpediceMarsAltimeter.ino` proti simulované trajektorii (motor 0,8 s,
   apogeum 234,4 m, výsadek 5 m/s). Ověřeno:

@@ -47,7 +47,7 @@
 // ---------------------- LETOVE PRAHY ----------------------
 // (tyto tri hodnoty jdou prepsat i z webu, ukladaji se do NVS)
 
-#define DEF_LAUNCH_ALT_M   25.0f   // vyska nad startem, od ktere to je "let"
+#define DEF_LAUNCH_ALT_M   10.0f   // vyska nad startem, od ktere to je "let"
 #define DEF_APOGEE_DROP_M  10.0f   // pokles pod dosud nejvyssi vysku = apogeum
 #define DEF_PAD_MSL_M       0.0f   // nadmorska vyska startovisti (jen pro zobrazeni)
 
@@ -55,11 +55,14 @@
 
 #define SAMPLE_PERIOD_MS      100   // 10 Hz behem ARMED i letu (zadani)
 #define IDLE_PERIOD_MS       1000   // 1 Hz kdyz je vyskomer odzbrojeny
-#define PRELOG_SAMPLES         15   // kruhovy buffer pred startem (zadani)
+#define PRELOG_SAMPLES          5   // kruhovy buffer pred startem (0,5 s historie)
 
-// Pristani: vyska se po apogeu drzi v okne +-LAND_BAND_M po LAND_STABLE_MS
-#define LAND_BAND_M          2.0f
-#define LAND_STABLE_MS       5000
+// Konec zaznamu (jen po apogeu): vyska je pod LAND_ALT_M a zaroven se
+// vyska meni (klesa i stoupa) pomaleji nez LAND_SPEED_MS, a to nepretrzite
+// aspon LAND_STABLE_MS.
+#define LAND_ALT_M          25.0f
+#define LAND_SPEED_MS        1.0f
+#define LAND_STABLE_MS       1000
 #define MIN_FLIGHT_MS        3000   // driv let neukoncime
 #define MAX_FLIGHT_MS      600000   // 10 min = tvrdy strop, pak zapis uzavrem
 

@@ -7,8 +7,9 @@
 //   * drzenim tlacitka 3 s (nebo pres web) se ulozi aktualni vyska jako
 //     startovni - reference zustava i po odpojeni baterie (NVS)
 //   * po ozbrojeni meri 10x za sekundu a drzi kruhovy buffer 15 vzorku
-//   * prekroceni +25 m nad startem = start letu; od te chvile se cely
-//     profil (vcetne 1,5 s pred startem z bufferu) zapisuje do flash
+//   * prekroceni +10 m nad startem = start letu; od te chvile se kazdych
+//     100 ms zapisuje vyska do flash (vcetne 5 vzorku pred startem z bufferu)
+//   * konec zaznamu: po apogeu, pod 25 m a rychlost < 1 m/s aspon 1 s v kuse
 //   * apogeum = aktualni vyska klesla o vic nez 10 m pod dosud nejvyssi
 //   * vse prezije reset i vypadek napajeni: vzorky se splachuji do flash
 //     kazdou sekundu, apogeum se zalohuje do NVS kazdych 250 ms a po
@@ -51,8 +52,7 @@ static PreSample s_pre[PRELOG_SAMPLES];
 static uint8_t   s_preN = 0, s_preHead = 0;
 
 static uint32_t s_nextSample = 0;
-static uint32_t s_landRefT = 0;
-static float    s_landRefAlt = 0;
+static uint32_t s_slowSince = 0;   // od kdy je po apogeu pod LAND_ALT_M a pomalu (0 = neni)
 static uint8_t  s_aboveCnt = 0;
 static uint8_t  s_vbatDiv = 0;
 
@@ -125,7 +125,7 @@ static void startFlight() {
   st.flightId = logStart(epochT0);
   st.recovered = false;
 
-  // Nejdriv predstartovni vzorky z kruhoveho bufferu (~1,5 s pred startem)
+  // Nejdriv predstartovni vzorky z kruhoveho bufferu (~0,5 s pred startem)
   for (uint8_t i = 0; i < s_preN; i++) {
     uint8_t idx = (o + i) % PRELOG_SAMPLES;
     logSample(s_pre[idx].ms - t0, s_pre[idx].alt);
@@ -135,8 +135,7 @@ static void startFlight() {
 
   st.flightT = flightTimeNow();
   progressSave(true);
-  s_landRefAlt = -99999.0f;
-  s_landRefT = now;
+  s_slowSince = 0;
 
   Serial.printf("[let] START id=%u  (prah %.1f m)\n", st.flightId, st.launchAltM);
   setMode(MODE_ASCENT);
@@ -185,16 +184,18 @@ static void flightSample() {
     setMode(MODE_DESCENT);
   }
 
-  // Pristani: po apogeu se vyska drzi v uzkem pasmu dostatecne dlouho
-  if (st.apogeeDone) {
+  // Konec zaznamu: jen po apogeu, vyska pod LAND_ALT_M a zaroven se meni
+  // (klesa nebo stoupa) pomaleji nez LAND_SPEED_MS - nepretrzite aspon
+  // LAND_STABLE_MS. Jakmile podminka byt jen jednou neplati, pocita se znovu.
+  if (st.apogeeDone && alt < LAND_ALT_M && fabsf(st.vSpeed) < LAND_SPEED_MS) {
     uint32_t now = millis();
-    if (fabsf(alt - s_landRefAlt) > LAND_BAND_M) {
-      s_landRefAlt = alt;
-      s_landRefT = now;
-    } else if ((now - s_landRefT) >= LAND_STABLE_MS && ft >= MIN_FLIGHT_MS) {
+    if (s_slowSince == 0) s_slowSince = now ? now : 1;
+    else if ((now - s_slowSince) >= LAND_STABLE_MS && ft >= MIN_FLIGHT_MS) {
       endFlight("pristani");
       return;
     }
+  } else {
+    s_slowSince = 0;
   }
 
   if (ft >= MAX_FLIGHT_MS) { endFlight("casovy limit"); return; }
@@ -232,8 +233,7 @@ static void recoverFlight(uint16_t id) {
   st.flightT0 = millis();
   st.recovered = true;
   logMarker(st.flightTOfs - 150);      // znacka preruseni v grafu
-  s_landRefAlt = -99999.0f;
-  s_landRefT = millis();
+  s_slowSince = 0;
 
   Serial.printf("[obnova] pokracuji v letu %u, dosud max %.1f m, apogeum %s\n",
                 id, st.maxAlt, st.apogeeDone ? "uz bylo" : "jeste ne");
