@@ -23,6 +23,8 @@
 //   dvojklik       - zapne / vypne WiFi s webem
 //   drzet 3 s      - ulozi startovni vysku a ozbroji (po 3 s cvrnkne LED)
 //   drzet 8 s      - vypne (deep sleep), probudi zase stisk tlacitka
+//                    (od 3 s LED blika cim dal rychleji, v 8 s sviti)
+//   web: Testovaci let - start hned bez prahu, konec nejdriv po 10 s
 // =====================================================================
 
 #include "config.h"
@@ -105,13 +107,14 @@ static void resetFlightVars() {
   st.maxSpeed = 0;
   st.apogeeDone = false;
   st.recovered = false;
+  st.testFlight = false;
   st.flightTOfs = 0;
   st.flightT = 0;
   s_aboveCnt = 0;
   preReset();
 }
 
-static void startFlight() {
+static void startFlight(bool test) {
   uint32_t now = millis();
   uint8_t o = preOldest();
   uint32_t t0 = (s_preN > 0) ? s_pre[o].ms : now;
@@ -122,7 +125,8 @@ static void startFlight() {
 
   st.flightT0 = t0;
   st.flightTOfs = 0;
-  st.flightId = logStart(epochT0);
+  st.testFlight = test;
+  st.flightId = logStart(epochT0, test);
   st.recovered = false;
 
   // Nejdriv predstartovni vzorky z kruhoveho bufferu (~0,5 s pred startem)
@@ -137,7 +141,8 @@ static void startFlight() {
   progressSave(true);
   s_slowSince = 0;
 
-  Serial.printf("[let] START id=%u  (prah %.1f m)\n", st.flightId, st.launchAltM);
+  if (test) Serial.printf("[let] START id=%u  TESTOVACI LET (bez prahu)\n", st.flightId);
+  else      Serial.printf("[let] START id=%u  (prah %.1f m)\n", st.flightId, st.launchAltM);
   setMode(MODE_ASCENT);
 }
 
@@ -152,6 +157,7 @@ static void endFlight(const char *why) {
                 st.flightId, st.maxAlt, st.maxAltT / 1000.0f, why);
 
   st.flightId = 0;
+  st.testFlight = false;
   st.armed = false;
   cfgSaveArmed(false);
   st.landedAt = millis();
@@ -187,7 +193,10 @@ static void flightSample() {
   // Konec zaznamu: jen po apogeu, vyska pod LAND_ALT_M a zaroven se meni
   // (klesa nebo stoupa) pomaleji nez LAND_SPEED_MS - nepretrzite aspon
   // LAND_STABLE_MS. Jakmile podminka byt jen jednou neplati, pocita se znovu.
-  if (st.apogeeDone && alt < LAND_ALT_M && fabsf(st.vSpeed) < LAND_SPEED_MS) {
+  // Testovaci let: prvnich TEST_LAND_BLOCK_MS je konec zablokovany, pak
+  // se misto apogea nevyzaduje nic.
+  bool landArmed = st.testFlight ? (ft >= TEST_LAND_BLOCK_MS) : st.apogeeDone;
+  if (landArmed && alt < LAND_ALT_M && fabsf(st.vSpeed) < LAND_SPEED_MS) {
     uint32_t now = millis();
     if (s_slowSince == 0) s_slowSince = now ? now : 1;
     else if ((now - s_slowSince) >= LAND_STABLE_MS && ft >= MIN_FLIGHT_MS) {
@@ -262,6 +271,23 @@ static void doZeroAndArm() {
   noteActivity();
 }
 
+// Testovaci let: kalibrace startovni vysky a hned start zaznamu (bez prahu).
+static void doTestFlight() {
+  Serial.println("[akce] testovaci let");
+  uiSet(UI_CAL);
+  if (!sensorCalibratePad()) {
+    Serial.println("[akce] kalibrace SELHALA");
+    uiSet(UI_ERROR);
+    return;
+  }
+  resetFlightVars();
+  st.armed = true;
+  cfgSaveArmed(true);
+  cfgAckLast();
+  noteActivity();
+  startFlight(true);
+}
+
 static void doDisarm() {
   st.armed = false;
   cfgSaveArmed(false);
@@ -315,6 +341,7 @@ static void handleWebRequests() {
       setMode(MODE_ARMED);
     } else uiSet(UI_ERROR);
   }
+  if (webReq.test)   { webReq.test = false;   if (!st.flightId) doTestFlight(); else uiSet(UI_ERROR); }
   if (webReq.disarm) { webReq.disarm = false; if (!st.flightId) doDisarm(); }
   if (webReq.sleep)  { webReq.sleep = false;
     if (st.flightId) uiSet(UI_ERROR);
@@ -333,7 +360,7 @@ static void doSample() {
     case MODE_ARMED:
       prePush(millis(), st.altAgl);
       if (st.padPa > 1000.0f && st.altAgl >= st.launchAltM) {
-        if (++s_aboveCnt >= 2) startFlight();   // dva vzorky po sobe = neni to zakmit
+        if (++s_aboveCnt >= 2) startFlight(false);   // dva vzorky po sobe = neni to zakmit
       } else {
         s_aboveCnt = 0;
       }

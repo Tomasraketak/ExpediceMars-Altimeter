@@ -91,10 +91,20 @@ Ostatní volby (CPU frekvence, USB CDC) nech výchozí — frekvenci si nastavuj
 | **krátký stisk** | probudí výškoměr / vybliká poslední apogeum |
 | **dvojklik** | zapne nebo vypne WiFi s webem |
 | **držet 3 s** | uloží aktuální výšku jako startovní a **ozbrojí** (po 3 s LED cvrnkne — pak pusť) |
-| **držet 8 s** | vypne (deep sleep); probudí se zase stiskem |
+| **držet 8 s** | vypne (deep sleep); probudí se zase stiskem. Od ~3,3 s LED bliká a **čím dál rychleji**, jak se blíží vypnutí; v 8 s svítí trvale — pak pusť |
 
 Držení delší než 3 s a kratší než 8 s se vyhodnotí **až při puštění**, takže se nedá
-omylem přeskočit — LED ti v 3 s a v 8 s dá vědět, kde jsi.
+omylem přeskočit — LED ti v 3 s cvrnkne a pak zrychlujícím blikáním ukazuje, jak blízko
+je vypnutí. Pustíš-li tlačítko během blikání (3–8 s), výškoměr se ozbrojí.
+
+### Testovací let
+
+Ve webu je tlačítko **Testovací let**. Nastaví současnou výšku jako startovní a **hned**
+spustí záznam — práh startu (+10 m) se přeskočí. Prvních **10 s** je podmínka konce
+záznamu zablokovaná, potom se nevyžaduje apogeum: záznam skončí, jakmile je výška
+< 25 m a mění se pomaleji než 1 m/s po dobu 1 s. Na stole tedy skončí za ~11 s,
+s výškoměrem v ruce nebo ve výtahu tak dlouho, dokud se hýbeš. Let je ve webu označený
+štítkem **„test“** (v hlavičce souboru příznak `0x04`). Během záznamu web neodpovídá.
 
 ### Řeč LED
 
@@ -255,6 +265,7 @@ Všechno podstatné je v `config.h`:
 | `PRELOG_SAMPLES` | 5 | kruhový buffer před startem |
 | `SAMPLE_PERIOD_MS` | 100 | perioda vzorkování za letu |
 | `LAND_ALT_M` / `LAND_SPEED_MS` / `LAND_STABLE_MS` | 25 m / 1 m/s / 1 s | konec záznamu (jen po apogeu) |
+| `TEST_LAND_BLOCK_MS` | 10 s | testovací let: jak dlouho je konec zablokovaný |
 | `MAX_FLIGHT_MS` | 10 min | tvrdý strop délky záznamu |
 | `LOG_FLUSH_MS` | 1000 | jak často do flash |
 | `PROGRESS_SAVE_MS` | 250 | jak často záloha apogea do NVS |
@@ -281,7 +292,7 @@ hlavička: magic "EAM1" (u32), verze (u8), příznaky (u8), id (u16), unixový �
 vzorek:   čas od začátku letu v ms (u32), výška nad startem v m (f32)
 ```
 
-Příznaky: `0x01` = let řádně uzavřen, `0x02` = záznam pokračoval po resetu.
+Příznaky: `0x01` = let řádně uzavřen, `0x02` = záznam pokračoval po resetu, `0x04` = testovací let.
 Vzorek s výškou `NaN` je značka přerušení záznamu. Případný název letu je vedle
 v `/fNNNN.nam`, takže přejmenování nikdy nesáhne na naměřená data.
 

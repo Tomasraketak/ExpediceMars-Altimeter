@@ -104,11 +104,12 @@ static void handleFlights() {
     snprintf(buf, sizeof buf,
       "%s{\"id\":%u,\"name\":\"%s\",\"epoch\":%lu,\"apogee\":%.2f,\"apogeeT\":%lu,"
       "\"dur\":%lu,\"maxSpeed\":%.2f,\"samples\":%lu,\"padMsl\":%.1f,"
-      "\"done\":%d,\"recovered\":%d}",
+      "\"done\":%d,\"recovered\":%d,\"test\":%d}",
       first ? "" : ",", (unsigned)h.id, nm.c_str(), (unsigned long)h.epoch,
       h.apogeeM, (unsigned long)h.apogeeT, (unsigned long)h.durationMs,
       h.maxSpeed, (unsigned long)h.samples, h.padMsl,
-      (h.flags & FF_FINALIZED) ? 1 : 0, (h.flags & FF_RECOVERED) ? 1 : 0);
+      (h.flags & FF_FINALIZED) ? 1 : 0, (h.flags & FF_RECOVERED) ? 1 : 0,
+      (h.flags & FF_TEST) ? 1 : 0);
     server.sendContent(buf);
     first = false;
   }
@@ -258,6 +259,7 @@ static void handleDeleteAll() {
 }
 
 static void handleZero()   { touch(); webReq.zero = true;   server.send(200, "application/json", "{\"ok\":1}"); }
+static void handleTest()   { touch(); webReq.test = true;   server.send(200, "application/json", "{\"ok\":1}"); }
 static void handleSleep()  { touch(); webReq.sleep = true;  server.send(200, "application/json", "{\"ok\":1}"); }
 
 static void handleArm() {
@@ -331,6 +333,7 @@ void webBegin() {
     server.on("/api/zero", HTTP_POST, handleZero);
     server.on("/api/arm", HTTP_POST, handleArm);
     server.on("/api/sleep", HTTP_POST, handleSleep);
+    server.on("/api/test", HTTP_POST, handleTest);
     server.on("/api/settings", HTTP_POST, handleSettings);
     server.on("/api/time", HTTP_POST, handleTime);
     server.onNotFound(handleNotFound);

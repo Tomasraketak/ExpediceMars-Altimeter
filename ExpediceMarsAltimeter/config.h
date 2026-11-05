@@ -63,6 +63,12 @@
 #define LAND_ALT_M          25.0f
 #define LAND_SPEED_MS        1.0f
 #define LAND_STABLE_MS       1000
+
+// Testovaci let (tlacitko ve webu): zacne se zaznamenavat hned bez prahu
+// startu, prvnich TEST_LAND_BLOCK_MS je podminka konce zablokovana a pak
+// se nevyzaduje apogeum (na stole by nikdy nenastalo) - konec tedy prijde
+// po 10 s, jakmile je vyska < LAND_ALT_M a zmena < LAND_SPEED_MS po 1 s.
+#define TEST_LAND_BLOCK_MS  10000
 #define MIN_FLIGHT_MS        3000   // driv let neukoncime
 #define MAX_FLIGHT_MS      600000   // 10 min = tvrdy strop, pak zapis uzavrem
 
@@ -92,6 +98,10 @@
 #define BTN_ARM_MS           3000   // 3 s = ulozit startovni vysku + ARM
 #define BTN_OFF_MS           8000   // 8 s = vypnout (deep sleep)
 #define BTN_DOUBLE_GAP_MS     500   // okno pro druhy klik (dvojklik = WiFi)
+// Blikani pri drzeni k vypnuti (mezi 3 s a 8 s): perioda se zkracuje
+// z BTN_OFF_BLINK_SLOW_MS na BTN_OFF_BLINK_FAST_MS, v 8 s LED trvale sviti.
+#define BTN_OFF_BLINK_SLOW_MS 500
+#define BTN_OFF_BLINK_FAST_MS  60
 
 // ---------------------- FILTRACE ----------------------
 // Lehky EMA filtr na vysku. 1.0 = zadna filtrace, nizsi = hladsi ale pomalejsi.
