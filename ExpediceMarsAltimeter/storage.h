@@ -47,7 +47,9 @@ void   cfgSavePad(float pa);
 void   cfgSaveArmed(bool armed);
 void   cfgSaveTunables();                 // padMsl, launchAltM, apogeeDropM
 void   cfgSaveAp(const String &ssid, const String &pass);
-void   cfgSaveLast(uint16_t id, float apogee);
+void   cfgSaveLast(uint16_t id, float apogee);   // + oznaci apogeum jako neprectene
+bool   cfgLastUnread();                         // posledni apogeum jeste nikdo nevidel
+void   cfgAckLast();                            // uzivatel apogeum videl
 String cfgApSsid();
 String cfgApPass();
 

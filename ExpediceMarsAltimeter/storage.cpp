@@ -110,6 +110,16 @@ void cfgSaveLast(uint16_t id, float apogee) {
   if (!s_prefsOk) return;
   prefs.putUShort("lastId", id);
   prefs.putFloat("lastApo", apogee);
+  prefs.putBool("lastNew", true);
+}
+
+bool cfgLastUnread() {
+  return s_prefsOk && prefs.getBool("lastNew", false);
+}
+
+void cfgAckLast() {
+  if (!s_prefsOk || !prefs.getBool("lastNew", false)) return;
+  prefs.putBool("lastNew", false);
 }
 
 String cfgApSsid() {

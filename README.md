@@ -35,17 +35,17 @@ pojmenování a export letů. Kód je psaný na co nejnižší spotřebu.
 
 | Další | XIAO ESP32-C6 |
 |---|---|
-| Tlačítko | **D0 (GPIO0)** ↔ GND |
+| Tlačítko SW1 | **D1 (GPIO1)** ↔ GND, R1 10 kΩ pull-up na 3V3 |
 | LED | GPIO15 (na desce, svítí v L) |
 | Baterie | BAT+ / BAT− (1S LiPo) |
 
-**Proč zrovna D0 pro tlačítko:** GPIO0–GPIO7 jsou na ESP32-C6 v LP (RTC) doméně, takže
-dokážou probudit čip z deep sleepu. Zároveň GPIO0 na C6 není strapping pin, takže držení
+**Proč D1 pro tlačítko:** GPIO0–GPIO7 jsou na ESP32-C6 v LP (RTC) doméně, takže
+dokážou probudit čip z deep sleepu. GPIO1 na C6 není strapping pin, takže držení
 tlačítka při zapnutí nerozhodí bootování. Pin jde změnit v `config.h`, ale pro buzení
 z deep sleepu musí zůstat v rozsahu GPIO0–GPIO7.
 
-Tlačítko nepotřebuje žádné externí součástky (používá se vnitřní pull-up). Pro úplnou
-jistotu při deep sleepu můžeš přidat externí **100 kΩ z D0 na 3V3**.
+Na desce je externí pull-up R1 10 kΩ z D1 na 3V3 (navíc se zapíná i vnitřní pull-up).
+Při stisku teče přes R1 ~0,33 mA — jen po dobu držení, v klidu nic.
 
 Adresu BMP580 řešit nemusíš — knihovna sama zkusí 0x46 i 0x47.
 
@@ -60,7 +60,8 @@ V `config.h` jde zapnout:
 - `PIN_BUZZER` — aktivní piezo bzučák. Pípá souběžně s LED, takže raketu v trávě najdeš
   podle vyblikaného/vypípaného apogea.
 - `PIN_VBAT` — měření napětí baterie přes vlastní odporový dělič (XIAO ESP32-C6 nemá
-  dělič k BAT vyvedený na žádný pin). Např. 2× 220 kΩ mezi BAT+ a GND, střed na A1 (GPIO1).
+  dělič k BAT vyvedený na žádný pin). Např. 2× 220 kΩ mezi BAT+ a GND, střed na A2 (GPIO2)
+  (A1/GPIO1 už je tlačítko).
   **GPIO3 a GPIO14 nepoužívej** — ovládají na XIAO VF přepínač antény.
 
 ---
@@ -180,15 +181,19 @@ Tohle byl hlavní požadavek, takže je to řešené na třech úrovních:
 | Co | Kam | Jak často | Nejhorší možná ztráta |
 |---|---|---|---|
 | vzorky profilu | LittleFS (flash) | splachuje se do flash **každou 1 s** | ~1 s profilu |
-| apogeum + stav letu | NVS | **co 250 ms**, když maximum vyroste o ≥ 1 m | ~1 m |
+| apogeum + stav letu | NVS | **co 250 ms**, když maximum vyroste o ≥ 0,1 m; při detekci apogea vždy | ~0,1 m / ~350 ms |
+| poslední apogeum (po přistání) | NVS | při uzavření letu | nic |
 | stav „ozbrojeno“ + reference | NVS | při nastavení | nic |
 
 **Po resetu (brownout, vybitá baterka, cuknutí konektorem) se stane tohle:**
 
 1. Při startu se zjistí, že v NVS je rozepsaný let → záznam **pokračuje ve stejném souboru**.
 2. Soubor se projde a zjistí se, co v něm doopravdy je (poslední čas, maximum, max. rychlost).
-   Jako maximum se vezme **to lepší** z NVS a ze souboru — NVS má i to, co se nestihlo
-   zapsat, soubor zase to, co se do NVS nestihlo promítnout.
+   Pokud apogeum ještě nebylo detekované, vezme se jako maximum **to lepší** z NVS a ze
+   souboru. Pokud už bylo, platí hodnota z NVS — při detekci apogea se tam zapisuje vždy
+   a od té chvíle se maximum **zmrazí** (nic naměřeného po apogeu ho už nepřepíše).
+   Kdyby soubor letu chyběl nebo byl poškozený, let se nezahodí — pokračuje se jen
+   s apogeem z NVS (bez profilu).
 3. Časová osa se napojí **za poslední zapsaný vzorek**, takže nikdy neskočí zpátky.
    Do grafu se vloží značka přerušení (v CSV řádek `# --- preruseni zaznamu (reset) ---`).
    Délku výpadku nemá výškoměr jak zjistit (nemá RTC), počítá se s odhadem 300 ms.
@@ -198,8 +203,14 @@ Tohle byl hlavní požadavek, takže je to řešené na třech úrovních:
 Když se výškoměr **resetuje na rampě** (ozbrojený, let ještě nezačal), naběhne zase
 ozbrojený a se stejnou referencí — nemusíš nic mačkat.
 
-Když **nedojde k obnově vůbec** (třeba se vybije baterka a zapneš to až doma), let se
-uzavře během ~5 s po zapnutí a apogeum zůstane to poslední naměřené před výpadkem.
+Když **nedojde k obnově hned** (při dopadu se vypojí baterka a zapneš to až doma), let se
+uzavře během ~5 s po zapnutí a apogeum zůstane to naměřené před výpadkem. Díky zmrazení
+maxima po apogeu ho nepřepíše ani „falešná výška“ způsobená jinou nadmořskou výškou
+nebo změnou počasí doma.
+
+**Nepřečtené apogeum:** dokud apogeum někdo neviděl (krátký stisk tlačítka nebo nové
+ozbrojení), výškoměr ho po každém zapnutí / resetu rovnou bliká (režim LANDED, 5 min).
+Reset po přistání ani vypojená baterka tak o výsledek nepřipraví.
 
 ---
 

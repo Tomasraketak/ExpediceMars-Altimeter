@@ -9,13 +9,13 @@
 
 // ---------------------- PINY ----------------------
 
-// Tlacitko: D0 = GPIO0.
-// Duvod volby: GPIO0..GPIO7 jsou na ESP32-C6 v LP (RTC) domene, takze
-// dokazou probudit cip i z deep sleepu. Tlacitko spina pin na GND.
+// Tlacitko: D1 = GPIO1 (podle schematu: SW1 spina D1 na GND, R1 10k pull-up na 3V3).
+// GPIO0..GPIO7 jsou na ESP32-C6 v LP (RTC) domene, takze dokazou probudit
+// cip i z deep sleepu - pin tlacitka proto musi zustat v tomto rozsahu.
 #ifndef PIN_BUTTON
-#define PIN_BUTTON 0
+#define PIN_BUTTON 1
 #endif
-#define BUTTON_ACTIVE_LOW 1   // tlacitko spina na GND, pin ma vnitrni pull-up
+#define BUTTON_ACTIVE_LOW 1   // tlacitko spina na GND, externi 10k + vnitrni pull-up
 
 // Uzivatelska LED na XIAO ESP32-C6 je GPIO15 a sviti pri LOW.
 #ifndef PIN_LED
@@ -34,7 +34,7 @@
 // Volitelne mereni napeti baterie pres odporovy delic na ADC pin.
 // XIAO ESP32-C6 nema delic k BAT vyvedeny na zadny pin, takze pokud
 // napeti chces videt ve webu, pripoj si vlastni delic (napr. 2x 220k)
-// mezi BAT+ a GND a stred treba na A1 (GPIO1) nebo A2 (GPIO2).
+// mezi BAT+ a GND a stred treba na A2 (GPIO2). (A1/GPIO1 = tlacitko.)
 // Pozor: GPIO3 a GPIO14 ridi na XIAO C6 VF prepinac anteny, ty nepouzivej.
 #define PIN_VBAT -1
 #define VBAT_DIVIDER 2.0f   // (R1+R2)/R2 pro pouzity delic
@@ -64,8 +64,10 @@
 #define MAX_FLIGHT_MS      600000   // 10 min = tvrdy strop, pak zapis uzavrem
 
 // Jak casto se za letu zalohuje apogeum + stav do NVS (odolnost proti resetu)
+// Ulozi se kazdy narust maxima o >= 0.1 m, nejvys jednou za 250 ms, takze
+// skutecny vrchol je v NVS nejpozdeji ~350 ms po tom, co nastal.
 #define PROGRESS_SAVE_MS      250
-#define PROGRESS_SAVE_DELTA_M 1.0f
+#define PROGRESS_SAVE_DELTA_M 0.1f
 // Jak casto se buffer vzorku splachne z RAM do flash
 #define LOG_FLUSH_MS         1000
 

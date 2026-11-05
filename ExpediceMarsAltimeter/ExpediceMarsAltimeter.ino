@@ -168,8 +168,14 @@ static void flightSample() {
   logSample(ft, alt);
   st.flightT = ft;
 
-  if (alt > st.maxAlt) { st.maxAlt = alt; st.maxAltT = ft; }
-  if (st.vSpeed > st.maxSpeed) st.maxSpeed = st.vSpeed;
+  // Po detekci apogea uz se maximum nemeni. Fyzicky by nemelo, a hlavne to
+  // chrani apogeum pred nesmyslem po obnove z resetu - kdyz se baterka pri
+  // dopadu vypoji a znovu se zapoji az doma (jina nadm. vyska / pocasi),
+  // "vyska" muze vyjit vyssi nez skutecne apogeum.
+  if (!st.apogeeDone) {
+    if (alt > st.maxAlt) { st.maxAlt = alt; st.maxAltT = ft; }
+    if (st.vSpeed > st.maxSpeed) st.maxSpeed = st.vSpeed;
+  }
 
   // Apogeum: vyska je o vic nez apogeeDropM pod dosud nejvyssi namerenou
   if (!st.apogeeDone && (st.maxAlt - alt) > st.apogeeDropM) {
@@ -202,15 +208,21 @@ static void recoverFlight(uint16_t id) {
   progressRestore();
   ResumeInfo ri;
   if (!logResume(id, &ri)) {
-    Serial.printf("[obnova] soubor letu %u chybi, zaznam koncim\n", id);
-    progressClear();
-    st.flightId = 0;
-    return;
+    // Soubor chybi nebo je poskozeny (napr. dosla flash). Apogeum ale mame
+    // v NVS, takze let NEZAHAZUJEME - pokracujeme bez zapisu profilu
+    // (logSample() bez otevreneho souboru nic nedela) a pri pristani se
+    // apogeum ulozi jako posledni let.
+    Serial.printf("[obnova] soubor letu %u chybi, pokracuji jen s apogeem z NVS\n", id);
+    ri = ResumeInfo();
   }
   // Ze souboru si vezmeme to, co v nem uz je - muze byt novejsi nez zaloha
-  // v NVS (po apogeu se maximum nemeni, takze se prestane zalohovat).
-  if (ri.maxAlt > st.maxAlt) { st.maxAlt = ri.maxAlt; st.maxAltT = ri.maxAltT; }
-  if (ri.maxSpeed > st.maxSpeed) st.maxSpeed = ri.maxSpeed;
+  // v NVS (v souboru muze byt vzorek, ktery se do NVS nestihl promitnout).
+  // Kdyz uz ale bylo apogeum, plati NVS: pri detekci apogea se zapisuje
+  // vzdy (force) a od te chvile se maximum nemeni.
+  if (!st.apogeeDone) {
+    if (ri.maxAlt > st.maxAlt) { st.maxAlt = ri.maxAlt; st.maxAltT = ri.maxAltT; }
+    if (ri.maxSpeed > st.maxSpeed) st.maxSpeed = ri.maxSpeed;
+  }
 
   // Navazujeme za pozdejsi z obou znamych bodu, aby cas v zaznamu nikdy
   // neskocil zpatky. +300 ms je odhad mezery, kterou zabral samotny restart.
@@ -242,6 +254,7 @@ static void doZeroAndArm() {
   resetFlightVars();
   st.armed = true;
   cfgSaveArmed(true);
+  cfgAckLast();
   Serial.printf("[akce] reference %.1f Pa, ozbrojeno\n", st.padPa);
   st.mode = MODE_IDLE;
   setMode(MODE_ARMED);
@@ -268,9 +281,10 @@ static void handleButton(BtnEvent ev) {
   noteActivity();
   switch (ev) {
     case BTN_SHORT:
-      if (st.lastApogee >= 1.0f && (st.mode == MODE_IDLE || st.mode == MODE_LANDED))
+      if (st.lastApogee >= 1.0f && (st.mode == MODE_IDLE || st.mode == MODE_LANDED)) {
         uiBlinkNumber((int)lroundf(st.lastApogee));
-      else
+        cfgAckLast();        // uzivatel apogeum videl
+      } else
         uiSet(UI_CONFIRM);
       break;
     case BTN_DOUBLE:
@@ -296,6 +310,7 @@ static void handleWebRequests() {
       resetFlightVars();
       st.armed = true;
       cfgSaveArmed(true);
+      cfgAckLast();
       st.mode = MODE_IDLE;
       setMode(MODE_ARMED);
     } else uiSet(UI_ERROR);
@@ -384,6 +399,11 @@ void setup() {
   } else if (st.armed && st.padPa > 1000.0f) {
     resetFlightVars();
     setMode(MODE_ARMED);               // ozbrojeni prezije i reset na rampe
+  } else if (st.lastApogee >= 1.0f && cfgLastUnread()) {
+    // Let skoncil, ale apogeum jeste nikdo nevidel (reset / vypojena baterka
+    // po pristani) -> rovnou ho vyblikat, jako by se prave pristalo.
+    st.landedAt = millis();
+    setMode(MODE_LANDED);
   } else {
     setMode(MODE_IDLE);
   }
