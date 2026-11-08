@@ -146,6 +146,8 @@ WiFi AP je **po zapnutí defaultně zapnuté** a zůstane zapnuté, dokud ho nev
 vypnutí a reset; dvojklikem se zase zapne.
 
 - **SSID:** `ExpediceMars-XXXX` (XXXX = konec MAC adresy), heslo `raketa1234`
+  - vlastní název: v `config.h` `#define AP_SSID "Vyskomer-1"`, nebo ve webu
+    *Nastavení → Název WiFi sítě* (ten má přednost a pamatuje se i po přeflashování)
 - adresa **http://192.168.4.1** nebo **http://vyskomer.local**
 - funguje i captive portál — telefon nabídne přihlášení a stránka se otevře sama
 

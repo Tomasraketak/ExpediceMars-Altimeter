@@ -115,6 +115,10 @@
 #define USE_TEMP_COMPENSATION 0
 
 // ---------------------- WIFI AP ----------------------
+// Nazev WiFi site. "" = automaticky "ExpediceMars-XXXX" (XXXX = konec MAC,
+// takze kazdy kus ma jiny). Pro vlastni nazev napis napr. "Vyskomer-1".
+// Nazev nastaveny ve webu (Nastaveni -> Nazev WiFi site) ma prednost.
+#define AP_SSID     ""
 #define DEF_AP_PASS "raketa1234"   // min. 8 znaku, da se zmenit ve webu
 #define AP_HOSTNAME "vyskomer"     // http://vyskomer.local
 

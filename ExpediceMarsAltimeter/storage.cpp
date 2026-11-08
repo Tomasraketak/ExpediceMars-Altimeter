@@ -134,6 +134,7 @@ void cfgSaveWifi(bool on) {
 String cfgApSsid() {
   String s = s_prefsOk ? prefs.getString("apSsid", "") : String();
   if (s.length()) return s;
+  if (sizeof(AP_SSID) > 1) return String(AP_SSID);   // nazev z config.h
   uint8_t mac[6];
   WiFi.macAddress(mac);
   char buf[32];
