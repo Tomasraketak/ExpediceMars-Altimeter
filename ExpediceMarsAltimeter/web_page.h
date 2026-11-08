@@ -83,6 +83,7 @@ footer{text-align:center;color:var(--mut);font-size:11px;margin-top:20px}
   <div class="row" style="margin-top:8px">
     <button class="sm" id="btest">Testovací let</button>
     <button class="sm" id="bsleep">Uspat výškoměr</button>
+    <button class="sm" id="bwifi">Vypnout WiFi</button>
     <button class="sm" id="brel">Obnovit</button>
   </div>
   <div class="muted" id="hint" style="margin-top:10px"></div>
@@ -154,9 +155,9 @@ async function status(){
   $('#tmp').textContent=f1(s.temp)+' °C';
   $('#prs').textContent=f1(s.press/100)+' hPa';
   $('#pad').textContent=s.padSet?f1(s.padPa/100)+' hPa':'není';
-  $('#bat').textContent=s.vbat>0?f1(s.vbat,2)+' V':'—';
+  $('#bat').textContent=s.vbat>0?f1(s.vbat,2)+' V':'neměřeno';
   $('#mem').textContent=Math.round((s.fsTotal-s.fsUsed)/1024)+' kB volno';
-  $('#fw').textContent=s.fw;
+  $('#fw').textContent=s.fw+(s.fwDate?' ('+s.fwDate+')':'');
   $('#ups').textContent='běží '+dur(s.uptime*1000)+' · '+s.boots+'. zapnutí';
   const p=$('#modep');p.textContent=MODES[s.mode]||'?';
   p.className='pill'+(s.mode==1?' arm':s.mode==2||s.mode==3?' fly':s.mode==4?' ok':'');
@@ -166,8 +167,8 @@ async function status(){
   else if(!s.padSet)h='Nejdřív nastav startovní výšku (tlačítko „Nulovat + ARM“ nebo držení tlačítka 3 s).';
   else if(s.mode==1)h='Ozbrojeno. Start se pozná při překročení '+f1(s.launchM,0)+' m nad startovní plochou.';
   else if(s.mode==2||s.mode==3)h='Probíhá záznam letu č. '+s.flightId+', maximum '+f1(s.maxAlt)+' m.';
-  else if(s.mode==4)h='Let č. '+s.lastId+' uložen, apogeum '+f1(s.lastApogee)+' m.';
-  else h='Odzbrojeno. Po 3 minutách nečinnosti se výškoměr sám uspí.';
+  else if(s.mode==4)h='Let č. '+s.lastId+' uložen, apogeum '+f1(s.lastApogee)+' m. Pro další let stačí znovu „Nulovat + ARM“ (nebo držet tlačítko 3 s).';
+  else h='Odzbrojeno. Pro další let „Nulovat + ARM“ (nebo držet tlačítko 3 s).';
   $('#hint').innerHTML=h;
   if(document.activeElement!==$('#cMsl')){$('#cMsl').value=s.padMsl;$('#cLaunch').value=s.launchM;
     $('#cApo').value=s.apoDrop;if(!$('#cSsid').value)$('#cSsid').value=s.ssid;}
@@ -267,6 +268,8 @@ $('#bzero').onclick=async()=>{if(!confirm('Nastavit současnou výšku jako star
 $('#barm').onclick=async()=>{await api('/api/arm?on=0',{method:'POST'});setTimeout(status,300);};
 $('#btest').onclick=async()=>{if(!confirm('Nastavit současnou výšku jako startovní a hned spustit testovací záznam?\nKonec nejdřív po 10 s, až bude výška < 25 m a změna < 1 m/s po 1 s. Web během záznamu neodpovídá.'))return;
   await api('/api/test',{method:'POST'});$('#hint').textContent='Kalibruji a spouštím testovací let…';setTimeout(()=>{status();flights();},15000);};
+$('#bwifi').onclick=async()=>{if(!confirm('Vypnout WiFi? Web se odpojí. Znovu ji zapneš dvojklikem tlačítka.'))return;
+  await api('/api/wifioff',{method:'POST'});$('#hint').textContent='WiFi vypnuta.';};
 $('#bsleep').onclick=async()=>{if(!confirm('Uspat výškoměr? Probudíš ho stiskem tlačítka.'))return;
   await api('/api/sleep',{method:'POST'});};
 $('#brel').onclick=()=>{status();flights();};

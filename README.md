@@ -103,7 +103,7 @@ použij **ruční bootloader**:
 | Akce | Co to udělá |
 |---|---|
 | **krátký stisk** | probudí výškoměr / vybliká poslední apogeum |
-| **dvojklik** | zapne nebo vypne WiFi s webem |
+| **dvojklik** | zapne nebo vypne WiFi s webem (volba se pamatuje, výchozí = zapnuto) |
 | **držet 3 s** | uloží aktuální výšku jako startovní a **ozbrojí** (po 3 s LED cvrnkne — pak pusť) |
 | **držet 8 s** | vypne (deep sleep); probudí se zase stiskem. Od ~3,3 s LED bliká a **čím dál rychleji**, jak se blíží vypnutí; v 8 s svítí trvale — pak pusť |
 
@@ -139,7 +139,9 @@ bliknutí, mezi číslicemi delší pauza. Např. **137 m** = `•` … `••�
 
 ## Webové rozhraní
 
-Dvojklikem na tlačítko se zapne WiFi AP:
+WiFi AP je **po zapnutí defaultně zapnuté** a zůstane zapnuté, dokud ho nevypneš
+(dvojklikem tlačítka nebo tlačítkem *Vypnout WiFi* ve webu). Volba se pamatuje i přes
+vypnutí a reset; dvojklikem se zase zapne.
 
 - **SSID:** `ExpediceMars-XXXX` (XXXX = konec MAC adresy), heslo `raketa1234`
 - adresa **http://192.168.4.1** nebo **http://vyskomer.local**
@@ -159,7 +161,14 @@ Stránka je celá uložená v čipu (AP nemá internet, takže se nic nestahuje 
 Výškoměr nemá hodiny reálného času — čas si bere z prohlížeče při otevření stránky,
 takže lety zaznamenané po připojení telefonu mají skutečné datum a čas.
 
-**AP se sám vypne po 5 minutách** bez požadavku, aby zbytečně nežral baterii.
+**AP se samo nevypíná.** Pozor na spotřebu: se zapnutou WiFi bere výškoměr ~80–120 mA,
+takže 300mAh článek vydrží zhruba 3 h a výškoměr se sám neuspí. Když ho necháváš
+dlouho na rampě, WiFi vypni. (Automatické vypnutí jde vrátit v `config.h`:
+`AP_TIMEOUT_MS`, a výchozí stav `DEF_WIFI_ON`.)
+
+Ve webu je v patičce **verze firmwaru a datum, kdy byl přeložen** (např.
+`fw 1.1.0 (2026-11-08 14:05)`). **Napětí baterie** se zobrazí jen s osazeným děličem
+(viz `PIN_VBAT`), jinak je tam „neměřeno“.
 
 ---
 
@@ -247,7 +256,7 @@ Kde se šetří:
 
 - **light sleep mezi vzorky** — v IDLE i ARMED čip mezi měřeními spí a budí ho časovač
   nebo tlačítko. Tohle je zdaleka největší úspora.
-- **WiFi jen na vyžádání** a s automatickým vypnutím, vysílací výkon snížený na 11 dBm.
+- **WiFi** je defaultně zapnutá (dá se vypnout), vysílací výkon snížený na 11 dBm.
 - **VF přepínač antény** (GPIO3) je napájený jen když jede WiFi.
 - **Bluetooth vypnutý**, CPU na 80 MHz místo 160 MHz.
 - **BMP580** běží na 20 Hz s OSR ×8/×1, před deep sleepem jde do STANDBY.
@@ -284,7 +293,8 @@ Všechno podstatné je v `config.h`:
 | `LOG_FLUSH_MS` | 1000 | jak často do flash |
 | `PROGRESS_SAVE_MS` | 250 | jak často záloha apogea do NVS |
 | `IDLE_TO_SLEEP_MS` | 3 min | nečinnost → deep sleep |
-| `AP_TIMEOUT_MS` | 5 min | nečinnost webu → vypnout AP |
+| `AP_TIMEOUT_MS` | 0 (nikdy) | nečinnost webu → vypnout AP |
+| `DEF_WIFI_ON` | 1 | WiFi po zapnutí zapnutá, dokud ji uživatel nevypne |
 | `ARMED_TIMEOUT_MS` | 0 | 0 = v ARMED nikdy sám neusne |
 | `ALT_EMA_ALPHA` | 0,40 | filtrace výšky (1,0 = žádná) |
 | `USE_TEMP_COMPENSATION` | 0 | přepočet podle teploty vzduchu |

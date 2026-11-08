@@ -299,6 +299,7 @@ static void doDisarm() {
 static void toggleWeb() {
   if (webActive()) webStop();
   else webBegin();
+  cfgSaveWifi(webActive());       // volba prezije i vypnuti / reset
   applyLedForMode();
   noteActivity();
 }
@@ -342,6 +343,12 @@ static void handleWebRequests() {
     } else uiSet(UI_ERROR);
   }
   if (webReq.test)   { webReq.test = false;   if (!st.flightId) doTestFlight(); else uiSet(UI_ERROR); }
+  if (webReq.wifiOff) { webReq.wifiOff = false;
+    delay(300);                    // at odpoved stihne odejit
+    webStop();
+    cfgSaveWifi(false);
+    applyLedForMode();
+  }
   if (webReq.disarm) { webReq.disarm = false; if (!st.flightId) doDisarm(); }
   if (webReq.sleep)  { webReq.sleep = false;
     if (st.flightId) uiSet(UI_ERROR);
@@ -379,10 +386,12 @@ static void doSample() {
 static void autoTimeouts() {
   uint32_t now = millis();
 
+#if AP_TIMEOUT_MS > 0
   if (webActive() && webIdleMs() > AP_TIMEOUT_MS) {
     webStop();
     applyLedForMode();
   }
+#endif
   if (st.mode == MODE_LANDED && (now - st.landedAt) > LANDED_AWAKE_MS) {
     setMode(MODE_IDLE);
   }
@@ -413,8 +422,8 @@ void setup() {
 
   if (!sensorBegin()) Serial.println("[init] CHYBA: BMP580 neodpovida");
 
-  Serial.printf("\nExpediceMars vyskomer %s, %lu. zapnuti, probuzeni: %s\n",
-                FW_VERSION, (unsigned long)st.bootCount, fromSleep ? "tlacitkem" : "reset/zapnuti");
+  Serial.printf("\nExpediceMars vyskomer %s (%s %s), %lu. zapnuti, probuzeni: %s\n",
+                FW_VERSION, FW_BUILD_DATE, FW_BUILD_TIME, (unsigned long)st.bootCount, fromSleep ? "tlacitkem" : "reset/zapnuti");
   Serial.printf("[init] reference %.1f Pa, ozbrojeno: %s, flash %u/%u B\n",
                 st.padPa, st.armed ? "ano" : "ne",
                 (unsigned)fsUsedBytes(), (unsigned)fsTotalBytes());
@@ -434,6 +443,8 @@ void setup() {
   } else {
     setMode(MODE_IDLE);
   }
+  // WiFi je defaultne zapnuta, dokud ji uzivatel nevypne (dvojklik / web)
+  if (cfgWifiOn()) webBegin();
   applyLedForMode();
 
   noteActivity();

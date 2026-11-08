@@ -122,6 +122,15 @@ void cfgAckLast() {
   prefs.putBool("lastNew", false);
 }
 
+bool cfgWifiOn() {
+  return s_prefsOk ? prefs.getBool("wifiOn", DEF_WIFI_ON) : (bool)DEF_WIFI_ON;
+}
+
+void cfgSaveWifi(bool on) {
+  if (!s_prefsOk) return;
+  if (prefs.getBool("wifiOn", DEF_WIFI_ON) != on) prefs.putBool("wifiOn", on);
+}
+
 String cfgApSsid() {
   String s = s_prefsOk ? prefs.getString("apSsid", "") : String();
   if (s.length()) return s;

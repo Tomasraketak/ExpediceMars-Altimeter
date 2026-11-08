@@ -51,6 +51,8 @@ void   cfgSaveAp(const String &ssid, const String &pass);
 void   cfgSaveLast(uint16_t id, float apogee);   // + oznaci apogeum jako neprectene
 bool   cfgLastUnread();                         // posledni apogeum jeste nikdo nevidel
 void   cfgAckLast();                            // uzivatel apogeum videl
+bool   cfgWifiOn();                         // ma byt WiFi AP zapnute (default ano)
+void   cfgSaveWifi(bool on);
 String cfgApSsid();
 String cfgApPass();
 

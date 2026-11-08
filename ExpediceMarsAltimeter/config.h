@@ -88,7 +88,8 @@
 #define CPU_MHZ_RUN            80   // bezny beh i WiFi (160 MHz neni k nicemu potreba)
 #define IDLE_TO_SLEEP_MS   180000UL // 3 min necinnosti v IDLE -> deep sleep
 #define LANDED_AWAKE_MS    300000UL // po pristani 5 min blika apogeum, pak IDLE
-#define AP_TIMEOUT_MS      300000UL // 5 min bez HTTP pozadavku -> vypnout AP
+#define AP_TIMEOUT_MS           0UL // 0 = AP se sam nevypina (vypne ho jen uzivatel)
+#define DEF_WIFI_ON             1   // WiFi AP je po zapnuti defaultne zapnute
 #define ARMED_TIMEOUT_MS        0UL // 0 = v ARMED nikdy sam neusne
 // 1 = kdyz je pripojeny USB k pocitaci, nepouziva se light ani automaticky
 // deep sleep (jinak se USB port odpojuje a nejde nahrat novy kod)
@@ -116,4 +117,7 @@
 #define DEF_AP_PASS "raketa1234"   // min. 8 znaku, da se zmenit ve webu
 #define AP_HOSTNAME "vyskomer"     // http://vyskomer.local
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
+// Datum verze = kdy byl firmware prelozen (doplni prekladac)
+#define FW_BUILD_DATE __DATE__
+#define FW_BUILD_TIME __TIME__
