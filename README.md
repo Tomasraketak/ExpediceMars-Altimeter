@@ -59,9 +59,11 @@ V `config.h` jde zapnout:
 
 - `PIN_BUZZER` — aktivní piezo bzučák. Pípá souběžně s LED, takže raketu v trávě najdeš
   podle vyblikaného/vypípaného apogea.
-- `PIN_VBAT` — měření napětí baterie přes vlastní odporový dělič (XIAO ESP32-C6 nemá
-  dělič k BAT vyvedený na žádný pin). Např. 2× 220 kΩ mezi BAT+ a GND, střed na A2 (GPIO2)
-  (A1/GPIO1 už je tlačítko).
+- `PIN_VBAT` — měření napětí baterie. **XIAO ESP32-C6 nemá interní měření baterie**,
+  ani když je článek na BAT padech (Seeed wiki: *„you'll need to solder a 200k resistor
+  in a 1:2 configuration … through the A0 analog port“*). Zapojení: 2× 200–220 kΩ,
+  BAT+ → R → **A0 (D0 / GPIO0)** → R → GND, a v `config.h` nastav `PIN_VBAT 0`.
+  (A0 je ve schématu volný, D1 je tlačítko.)
   **GPIO3 a GPIO14 nepoužívej** — ovládají na XIAO VF přepínač antény.
 
 ---

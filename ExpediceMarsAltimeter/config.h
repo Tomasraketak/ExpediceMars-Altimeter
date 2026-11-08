@@ -32,9 +32,10 @@
 #define PIN_BUZZER -1
 
 // Volitelne mereni napeti baterie pres odporovy delic na ADC pin.
-// XIAO ESP32-C6 nema delic k BAT vyvedeny na zadny pin, takze pokud
-// napeti chces videt ve webu, pripoj si vlastni delic (napr. 2x 220k)
-// mezi BAT+ a GND a stred treba na A2 (GPIO2). (A1/GPIO1 = tlacitko.)
+// XIAO ESP32-C6 NEMA interni mereni baterie (ani kdyz je clanek na BAT
+// padech) - Seeed wiki doporucuje externi delic 1:2 na A0. Postup:
+// 2x 200-220k: BAT+ -> R -> A0 (D0/GPIO0) -> R -> GND, a pak PIN_VBAT 0.
+// Bez osazeneho delice nech -1 (plovouci pin by ukazoval nesmysly).
 // Pozor: GPIO3 a GPIO14 ridi na XIAO C6 VF prepinac anteny, ty nepouzivej.
 #define PIN_VBAT -1
 #define VBAT_DIVIDER 2.0f   // (R1+R2)/R2 pro pouzity delic
