@@ -59,6 +59,19 @@ static void handleRoot() {
   server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
+// __DATE__ ("Nov  8 2026") + __TIME__ -> "2026-11-08 14:05"
+static const char *fwBuildDate() {
+  static char out[20] = {0};
+  if (out[0]) return out;
+  static const char mon[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  const char *d = FW_BUILD_DATE;
+  int m = 0;
+  for (int i = 0; i < 12; i++) if (strncmp(d, mon + i * 3, 3) == 0) { m = i + 1; break; }
+  int day = atoi(d + 4), year = atoi(d + 7);
+  snprintf(out, sizeof out, "%04d-%02d-%02d %.5s", year, m, day, FW_BUILD_TIME);
+  return out;
+}
+
 static void handleStatus() {
   touch();
   char buf[960];
@@ -260,19 +273,6 @@ static void handleDeleteAll() {
 
 static void handleZero()   { touch(); webReq.zero = true;   server.send(200, "application/json", "{\"ok\":1}"); }
 static void handleWifiOff() { touch(); webReq.wifiOff = true; server.send(200, "application/json", "{\"ok\":1}"); }
-
-// __DATE__ ("Nov  8 2026") + __TIME__ -> "2026-11-08 14:05"
-static const char *fwBuildDate() {
-  static char out[20] = {0};
-  if (out[0]) return out;
-  static const char mon[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-  const char *d = FW_BUILD_DATE;
-  int m = 0;
-  for (int i = 0; i < 12; i++) if (strncmp(d, mon + i * 3, 3) == 0) { m = i + 1; break; }
-  int day = atoi(d + 4), year = atoi(d + 7);
-  snprintf(out, sizeof out, "%04d-%02d-%02d %.5s", year, m, day, FW_BUILD_TIME);
-  return out;
-}
 
 static void handleTest()   { touch(); webReq.test = true;   server.send(200, "application/json", "{\"ok\":1}"); }
 static void handleSleep()  { touch(); webReq.sleep = true;  server.send(200, "application/json", "{\"ok\":1}"); }
