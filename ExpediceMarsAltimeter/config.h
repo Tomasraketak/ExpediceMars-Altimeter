@@ -9,13 +9,13 @@
 
 // ---------------------- PINY ----------------------
 
-// Tlacitko: D0 = GPIO0.
-// Duvod volby: GPIO0..GPIO7 jsou na ESP32-C6 v LP (RTC) domene, takze
-// dokazou probudit cip i z deep sleepu. Tlacitko spina pin na GND.
+// Tlacitko: D1 = GPIO1 (podle schematu: SW1 spina D1 na GND, R1 10k pull-up na 3V3).
+// GPIO0..GPIO7 jsou na ESP32-C6 v LP (RTC) domene, takze dokazou probudit
+// cip i z deep sleepu - pin tlacitka proto musi zustat v tomto rozsahu.
 #ifndef PIN_BUTTON
-#define PIN_BUTTON 0
+#define PIN_BUTTON 1
 #endif
-#define BUTTON_ACTIVE_LOW 1   // tlacitko spina na GND, pin ma vnitrni pull-up
+#define BUTTON_ACTIVE_LOW 1   // tlacitko spina na GND, externi 10k + vnitrni pull-up
 
 // Uzivatelska LED na XIAO ESP32-C6 je GPIO15 a sviti pri LOW.
 #ifndef PIN_LED
@@ -32,9 +32,10 @@
 #define PIN_BUZZER -1
 
 // Volitelne mereni napeti baterie pres odporovy delic na ADC pin.
-// XIAO ESP32-C6 nema delic k BAT vyvedeny na zadny pin, takze pokud
-// napeti chces videt ve webu, pripoj si vlastni delic (napr. 2x 220k)
-// mezi BAT+ a GND a stred treba na A1 (GPIO1) nebo A2 (GPIO2).
+// XIAO ESP32-C6 NEMA interni mereni baterie (ani kdyz je clanek na BAT
+// padech) - Seeed wiki doporucuje externi delic 1:2 na A0. Postup:
+// 2x 200-220k: BAT+ -> R -> A0 (D0/GPIO0) -> R -> GND, a pak PIN_VBAT 0.
+// Bez osazeneho delice nech -1 (plovouci pin by ukazoval nesmysly).
 // Pozor: GPIO3 a GPIO14 ridi na XIAO C6 VF prepinac anteny, ty nepouzivej.
 #define PIN_VBAT -1
 #define VBAT_DIVIDER 2.0f   // (R1+R2)/R2 pro pouzity delic
@@ -47,7 +48,7 @@
 // ---------------------- LETOVE PRAHY ----------------------
 // (tyto tri hodnoty jdou prepsat i z webu, ukladaji se do NVS)
 
-#define DEF_LAUNCH_ALT_M   25.0f   // vyska nad startem, od ktere to je "let"
+#define DEF_LAUNCH_ALT_M   10.0f   // vyska nad startem, od ktere to je "let"
 #define DEF_APOGEE_DROP_M  10.0f   // pokles pod dosud nejvyssi vysku = apogeum
 #define DEF_PAD_MSL_M       0.0f   // nadmorska vyska startovisti (jen pro zobrazeni)
 
@@ -55,17 +56,28 @@
 
 #define SAMPLE_PERIOD_MS      100   // 10 Hz behem ARMED i letu (zadani)
 #define IDLE_PERIOD_MS       1000   // 1 Hz kdyz je vyskomer odzbrojeny
-#define PRELOG_SAMPLES         15   // kruhovy buffer pred startem (zadani)
+#define PRELOG_SAMPLES          5   // kruhovy buffer pred startem (0,5 s historie)
 
-// Pristani: vyska se po apogeu drzi v okne +-LAND_BAND_M po LAND_STABLE_MS
-#define LAND_BAND_M          2.0f
-#define LAND_STABLE_MS       5000
+// Konec zaznamu (jen po apogeu): vyska je pod LAND_ALT_M a zaroven se
+// vyska meni (klesa i stoupa) pomaleji nez LAND_SPEED_MS, a to nepretrzite
+// aspon LAND_STABLE_MS.
+#define LAND_ALT_M          25.0f
+#define LAND_SPEED_MS        1.0f
+#define LAND_STABLE_MS       1000
+
+// Testovaci let (tlacitko ve webu): zacne se zaznamenavat hned bez prahu
+// startu, prvnich TEST_LAND_BLOCK_MS je podminka konce zablokovana a pak
+// se nevyzaduje apogeum (na stole by nikdy nenastalo) - konec tedy prijde
+// po 10 s, jakmile je vyska < LAND_ALT_M a zmena < LAND_SPEED_MS po 1 s.
+#define TEST_LAND_BLOCK_MS  10000
 #define MIN_FLIGHT_MS        3000   // driv let neukoncime
 #define MAX_FLIGHT_MS      600000   // 10 min = tvrdy strop, pak zapis uzavrem
 
 // Jak casto se za letu zalohuje apogeum + stav do NVS (odolnost proti resetu)
+// Ulozi se kazdy narust maxima o >= 0.1 m, nejvys jednou za 250 ms, takze
+// skutecny vrchol je v NVS nejpozdeji ~350 ms po tom, co nastal.
 #define PROGRESS_SAVE_MS      250
-#define PROGRESS_SAVE_DELTA_M 1.0f
+#define PROGRESS_SAVE_DELTA_M 0.1f
 // Jak casto se buffer vzorku splachne z RAM do flash
 #define LOG_FLUSH_MS         1000
 
@@ -77,8 +89,12 @@
 #define CPU_MHZ_RUN            80   // bezny beh i WiFi (160 MHz neni k nicemu potreba)
 #define IDLE_TO_SLEEP_MS   180000UL // 3 min necinnosti v IDLE -> deep sleep
 #define LANDED_AWAKE_MS    300000UL // po pristani 5 min blika apogeum, pak IDLE
-#define AP_TIMEOUT_MS      300000UL // 5 min bez HTTP pozadavku -> vypnout AP
+#define AP_TIMEOUT_MS           0UL // 0 = AP se sam nevypina (vypne ho jen uzivatel)
+#define DEF_WIFI_ON             1   // WiFi AP je po zapnuti defaultne zapnute
 #define ARMED_TIMEOUT_MS        0UL // 0 = v ARMED nikdy sam neusne
+// 1 = kdyz je pripojeny USB k pocitaci, nepouziva se light ani automaticky
+// deep sleep (jinak se USB port odpojuje a nejde nahrat novy kod)
+#define USB_NO_SLEEP            1
 
 // ---------------------- TLACITKO ----------------------
 
@@ -87,6 +103,10 @@
 #define BTN_ARM_MS           3000   // 3 s = ulozit startovni vysku + ARM
 #define BTN_OFF_MS           8000   // 8 s = vypnout (deep sleep)
 #define BTN_DOUBLE_GAP_MS     500   // okno pro druhy klik (dvojklik = WiFi)
+// Blikani pri drzeni k vypnuti (mezi 3 s a 8 s): perioda se zkracuje
+// z BTN_OFF_BLINK_SLOW_MS na BTN_OFF_BLINK_FAST_MS, v 8 s LED trvale sviti.
+#define BTN_OFF_BLINK_SLOW_MS 500
+#define BTN_OFF_BLINK_FAST_MS  60
 
 // ---------------------- FILTRACE ----------------------
 // Lehky EMA filtr na vysku. 1.0 = zadna filtrace, nizsi = hladsi ale pomalejsi.
@@ -95,7 +115,14 @@
 #define USE_TEMP_COMPENSATION 0
 
 // ---------------------- WIFI AP ----------------------
+// Nazev WiFi site. "" = automaticky "ExpediceMars-XXXX" (XXXX = konec MAC,
+// takze kazdy kus ma jiny). Pro vlastni nazev napis napr. "Vyskomer-1".
+// Nazev nastaveny ve webu (Nastaveni -> Nazev WiFi site) ma prednost.
+#define AP_SSID     ""
 #define DEF_AP_PASS "raketa1234"   // min. 8 znaku, da se zmenit ve webu
 #define AP_HOSTNAME "vyskomer"     // http://vyskomer.local
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
+// Datum verze = kdy byl firmware prelozen (doplni prekladac)
+#define FW_BUILD_DATE __DATE__
+#define FW_BUILD_TIME __TIME__

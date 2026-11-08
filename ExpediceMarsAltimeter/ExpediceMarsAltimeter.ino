@@ -7,8 +7,9 @@
 //   * drzenim tlacitka 3 s (nebo pres web) se ulozi aktualni vyska jako
 //     startovni - reference zustava i po odpojeni baterie (NVS)
 //   * po ozbrojeni meri 10x za sekundu a drzi kruhovy buffer 15 vzorku
-//   * prekroceni +25 m nad startem = start letu; od te chvile se cely
-//     profil (vcetne 1,5 s pred startem z bufferu) zapisuje do flash
+//   * prekroceni +10 m nad startem = start letu; od te chvile se kazdych
+//     100 ms zapisuje vyska do flash (vcetne 5 vzorku pred startem z bufferu)
+//   * konec zaznamu: po apogeu, pod 25 m a rychlost < 1 m/s aspon 1 s v kuse
 //   * apogeum = aktualni vyska klesla o vic nez 10 m pod dosud nejvyssi
 //   * vse prezije reset i vypadek napajeni: vzorky se splachuji do flash
 //     kazdou sekundu, apogeum se zalohuje do NVS kazdych 250 ms a po
@@ -22,6 +23,8 @@
 //   dvojklik       - zapne / vypne WiFi s webem
 //   drzet 3 s      - ulozi startovni vysku a ozbroji (po 3 s cvrnkne LED)
 //   drzet 8 s      - vypne (deep sleep), probudi zase stisk tlacitka
+//                    (od 3 s LED blika cim dal rychleji, v 8 s sviti)
+//   web: Testovaci let - start hned bez prahu, konec nejdriv po 10 s
 // =====================================================================
 
 #include "config.h"
@@ -51,8 +54,7 @@ static PreSample s_pre[PRELOG_SAMPLES];
 static uint8_t   s_preN = 0, s_preHead = 0;
 
 static uint32_t s_nextSample = 0;
-static uint32_t s_landRefT = 0;
-static float    s_landRefAlt = 0;
+static uint32_t s_slowSince = 0;   // od kdy je po apogeu pod LAND_ALT_M a pomalu (0 = neni)
 static uint8_t  s_aboveCnt = 0;
 static uint8_t  s_vbatDiv = 0;
 
@@ -105,13 +107,14 @@ static void resetFlightVars() {
   st.maxSpeed = 0;
   st.apogeeDone = false;
   st.recovered = false;
+  st.testFlight = false;
   st.flightTOfs = 0;
   st.flightT = 0;
   s_aboveCnt = 0;
   preReset();
 }
 
-static void startFlight() {
+static void startFlight(bool test) {
   uint32_t now = millis();
   uint8_t o = preOldest();
   uint32_t t0 = (s_preN > 0) ? s_pre[o].ms : now;
@@ -122,10 +125,11 @@ static void startFlight() {
 
   st.flightT0 = t0;
   st.flightTOfs = 0;
-  st.flightId = logStart(epochT0);
+  st.testFlight = test;
+  st.flightId = logStart(epochT0, test);
   st.recovered = false;
 
-  // Nejdriv predstartovni vzorky z kruhoveho bufferu (~1,5 s pred startem)
+  // Nejdriv predstartovni vzorky z kruhoveho bufferu (~0,5 s pred startem)
   for (uint8_t i = 0; i < s_preN; i++) {
     uint8_t idx = (o + i) % PRELOG_SAMPLES;
     logSample(s_pre[idx].ms - t0, s_pre[idx].alt);
@@ -135,10 +139,10 @@ static void startFlight() {
 
   st.flightT = flightTimeNow();
   progressSave(true);
-  s_landRefAlt = -99999.0f;
-  s_landRefT = now;
+  s_slowSince = 0;
 
-  Serial.printf("[let] START id=%u  (prah %.1f m)\n", st.flightId, st.launchAltM);
+  if (test) Serial.printf("[let] START id=%u  TESTOVACI LET (bez prahu)\n", st.flightId);
+  else      Serial.printf("[let] START id=%u  (prah %.1f m)\n", st.flightId, st.launchAltM);
   setMode(MODE_ASCENT);
 }
 
@@ -153,6 +157,7 @@ static void endFlight(const char *why) {
                 st.flightId, st.maxAlt, st.maxAltT / 1000.0f, why);
 
   st.flightId = 0;
+  st.testFlight = false;
   st.armed = false;
   cfgSaveArmed(false);
   st.landedAt = millis();
@@ -168,8 +173,14 @@ static void flightSample() {
   logSample(ft, alt);
   st.flightT = ft;
 
-  if (alt > st.maxAlt) { st.maxAlt = alt; st.maxAltT = ft; }
-  if (st.vSpeed > st.maxSpeed) st.maxSpeed = st.vSpeed;
+  // Po detekci apogea uz se maximum nemeni. Fyzicky by nemelo, a hlavne to
+  // chrani apogeum pred nesmyslem po obnove z resetu - kdyz se baterka pri
+  // dopadu vypoji a znovu se zapoji az doma (jina nadm. vyska / pocasi),
+  // "vyska" muze vyjit vyssi nez skutecne apogeum.
+  if (!st.apogeeDone) {
+    if (alt > st.maxAlt) { st.maxAlt = alt; st.maxAltT = ft; }
+    if (st.vSpeed > st.maxSpeed) st.maxSpeed = st.vSpeed;
+  }
 
   // Apogeum: vyska je o vic nez apogeeDropM pod dosud nejvyssi namerenou
   if (!st.apogeeDone && (st.maxAlt - alt) > st.apogeeDropM) {
@@ -179,16 +190,21 @@ static void flightSample() {
     setMode(MODE_DESCENT);
   }
 
-  // Pristani: po apogeu se vyska drzi v uzkem pasmu dostatecne dlouho
-  if (st.apogeeDone) {
+  // Konec zaznamu: jen po apogeu, vyska pod LAND_ALT_M a zaroven se meni
+  // (klesa nebo stoupa) pomaleji nez LAND_SPEED_MS - nepretrzite aspon
+  // LAND_STABLE_MS. Jakmile podminka byt jen jednou neplati, pocita se znovu.
+  // Testovaci let: prvnich TEST_LAND_BLOCK_MS je konec zablokovany, pak
+  // se misto apogea nevyzaduje nic.
+  bool landArmed = st.testFlight ? (ft >= TEST_LAND_BLOCK_MS) : st.apogeeDone;
+  if (landArmed && alt < LAND_ALT_M && fabsf(st.vSpeed) < LAND_SPEED_MS) {
     uint32_t now = millis();
-    if (fabsf(alt - s_landRefAlt) > LAND_BAND_M) {
-      s_landRefAlt = alt;
-      s_landRefT = now;
-    } else if ((now - s_landRefT) >= LAND_STABLE_MS && ft >= MIN_FLIGHT_MS) {
+    if (s_slowSince == 0) s_slowSince = now ? now : 1;
+    else if ((now - s_slowSince) >= LAND_STABLE_MS && ft >= MIN_FLIGHT_MS) {
       endFlight("pristani");
       return;
     }
+  } else {
+    s_slowSince = 0;
   }
 
   if (ft >= MAX_FLIGHT_MS) { endFlight("casovy limit"); return; }
@@ -202,15 +218,21 @@ static void recoverFlight(uint16_t id) {
   progressRestore();
   ResumeInfo ri;
   if (!logResume(id, &ri)) {
-    Serial.printf("[obnova] soubor letu %u chybi, zaznam koncim\n", id);
-    progressClear();
-    st.flightId = 0;
-    return;
+    // Soubor chybi nebo je poskozeny (napr. dosla flash). Apogeum ale mame
+    // v NVS, takze let NEZAHAZUJEME - pokracujeme bez zapisu profilu
+    // (logSample() bez otevreneho souboru nic nedela) a pri pristani se
+    // apogeum ulozi jako posledni let.
+    Serial.printf("[obnova] soubor letu %u chybi, pokracuji jen s apogeem z NVS\n", id);
+    ri = ResumeInfo();
   }
   // Ze souboru si vezmeme to, co v nem uz je - muze byt novejsi nez zaloha
-  // v NVS (po apogeu se maximum nemeni, takze se prestane zalohovat).
-  if (ri.maxAlt > st.maxAlt) { st.maxAlt = ri.maxAlt; st.maxAltT = ri.maxAltT; }
-  if (ri.maxSpeed > st.maxSpeed) st.maxSpeed = ri.maxSpeed;
+  // v NVS (v souboru muze byt vzorek, ktery se do NVS nestihl promitnout).
+  // Kdyz uz ale bylo apogeum, plati NVS: pri detekci apogea se zapisuje
+  // vzdy (force) a od te chvile se maximum nemeni.
+  if (!st.apogeeDone) {
+    if (ri.maxAlt > st.maxAlt) { st.maxAlt = ri.maxAlt; st.maxAltT = ri.maxAltT; }
+    if (ri.maxSpeed > st.maxSpeed) st.maxSpeed = ri.maxSpeed;
+  }
 
   // Navazujeme za pozdejsi z obou znamych bodu, aby cas v zaznamu nikdy
   // neskocil zpatky. +300 ms je odhad mezery, kterou zabral samotny restart.
@@ -220,8 +242,7 @@ static void recoverFlight(uint16_t id) {
   st.flightT0 = millis();
   st.recovered = true;
   logMarker(st.flightTOfs - 150);      // znacka preruseni v grafu
-  s_landRefAlt = -99999.0f;
-  s_landRefT = millis();
+  s_slowSince = 0;
 
   Serial.printf("[obnova] pokracuji v letu %u, dosud max %.1f m, apogeum %s\n",
                 id, st.maxAlt, st.apogeeDone ? "uz bylo" : "jeste ne");
@@ -242,11 +263,29 @@ static void doZeroAndArm() {
   resetFlightVars();
   st.armed = true;
   cfgSaveArmed(true);
+  cfgAckLast();
   Serial.printf("[akce] reference %.1f Pa, ozbrojeno\n", st.padPa);
   st.mode = MODE_IDLE;
   setMode(MODE_ARMED);
   uiSet(UI_CONFIRM);
   noteActivity();
+}
+
+// Testovaci let: kalibrace startovni vysky a hned start zaznamu (bez prahu).
+static void doTestFlight() {
+  Serial.println("[akce] testovaci let");
+  uiSet(UI_CAL);
+  if (!sensorCalibratePad()) {
+    Serial.println("[akce] kalibrace SELHALA");
+    uiSet(UI_ERROR);
+    return;
+  }
+  resetFlightVars();
+  st.armed = true;
+  cfgSaveArmed(true);
+  cfgAckLast();
+  noteActivity();
+  startFlight(true);
 }
 
 static void doDisarm() {
@@ -260,6 +299,7 @@ static void doDisarm() {
 static void toggleWeb() {
   if (webActive()) webStop();
   else webBegin();
+  cfgSaveWifi(webActive());       // volba prezije i vypnuti / reset
   applyLedForMode();
   noteActivity();
 }
@@ -268,9 +308,10 @@ static void handleButton(BtnEvent ev) {
   noteActivity();
   switch (ev) {
     case BTN_SHORT:
-      if (st.lastApogee >= 1.0f && (st.mode == MODE_IDLE || st.mode == MODE_LANDED))
+      if (st.lastApogee >= 1.0f && (st.mode == MODE_IDLE || st.mode == MODE_LANDED)) {
         uiBlinkNumber((int)lroundf(st.lastApogee));
-      else
+        cfgAckLast();        // uzivatel apogeum videl
+      } else
         uiSet(UI_CONFIRM);
       break;
     case BTN_DOUBLE:
@@ -296,9 +337,17 @@ static void handleWebRequests() {
       resetFlightVars();
       st.armed = true;
       cfgSaveArmed(true);
+      cfgAckLast();
       st.mode = MODE_IDLE;
       setMode(MODE_ARMED);
     } else uiSet(UI_ERROR);
+  }
+  if (webReq.test)   { webReq.test = false;   if (!st.flightId) doTestFlight(); else uiSet(UI_ERROR); }
+  if (webReq.wifiOff) { webReq.wifiOff = false;
+    delay(300);                    // at odpoved stihne odejit
+    webStop();
+    cfgSaveWifi(false);
+    applyLedForMode();
   }
   if (webReq.disarm) { webReq.disarm = false; if (!st.flightId) doDisarm(); }
   if (webReq.sleep)  { webReq.sleep = false;
@@ -318,7 +367,7 @@ static void doSample() {
     case MODE_ARMED:
       prePush(millis(), st.altAgl);
       if (st.padPa > 1000.0f && st.altAgl >= st.launchAltM) {
-        if (++s_aboveCnt >= 2) startFlight();   // dva vzorky po sobe = neni to zakmit
+        if (++s_aboveCnt >= 2) startFlight(false);   // dva vzorky po sobe = neni to zakmit
       } else {
         s_aboveCnt = 0;
       }
@@ -337,20 +386,22 @@ static void doSample() {
 static void autoTimeouts() {
   uint32_t now = millis();
 
+#if AP_TIMEOUT_MS > 0
   if (webActive() && webIdleMs() > AP_TIMEOUT_MS) {
     webStop();
     applyLedForMode();
   }
+#endif
   if (st.mode == MODE_LANDED && (now - st.landedAt) > LANDED_AWAKE_MS) {
     setMode(MODE_IDLE);
   }
-  if (st.mode == MODE_IDLE && !webActive() && !st.armed &&
+  if (st.mode == MODE_IDLE && !webActive() && !st.armed && !usbConnected() &&
       (now - st.lastActivity) > IDLE_TO_SLEEP_MS) {
     Serial.println("[power] necinnost -> deep sleep");
     enterDeepSleep();
   }
 #if ARMED_TIMEOUT_MS > 0
-  if (st.mode == MODE_ARMED && (now - st.lastActivity) > ARMED_TIMEOUT_MS) {
+  if (st.mode == MODE_ARMED && !usbConnected() && (now - st.lastActivity) > ARMED_TIMEOUT_MS) {
     enterDeepSleep();
   }
 #endif
@@ -371,8 +422,8 @@ void setup() {
 
   if (!sensorBegin()) Serial.println("[init] CHYBA: BMP580 neodpovida");
 
-  Serial.printf("\nExpediceMars vyskomer %s, %lu. zapnuti, probuzeni: %s\n",
-                FW_VERSION, (unsigned long)st.bootCount, fromSleep ? "tlacitkem" : "reset/zapnuti");
+  Serial.printf("\nExpediceMars vyskomer %s (%s %s), %lu. zapnuti, probuzeni: %s\n",
+                FW_VERSION, FW_BUILD_DATE, FW_BUILD_TIME, (unsigned long)st.bootCount, fromSleep ? "tlacitkem" : "reset/zapnuti");
   Serial.printf("[init] reference %.1f Pa, ozbrojeno: %s, flash %u/%u B\n",
                 st.padPa, st.armed ? "ano" : "ne",
                 (unsigned)fsUsedBytes(), (unsigned)fsTotalBytes());
@@ -384,9 +435,16 @@ void setup() {
   } else if (st.armed && st.padPa > 1000.0f) {
     resetFlightVars();
     setMode(MODE_ARMED);               // ozbrojeni prezije i reset na rampe
+  } else if (st.lastApogee >= 1.0f && cfgLastUnread()) {
+    // Let skoncil, ale apogeum jeste nikdo nevidel (reset / vypojena baterka
+    // po pristani) -> rovnou ho vyblikat, jako by se prave pristalo.
+    st.landedAt = millis();
+    setMode(MODE_LANDED);
   } else {
     setMode(MODE_IDLE);
   }
+  // WiFi je defaultne zapnuta, dokud ji uzivatel nevypne (dvojklik / web)
+  if (cfgWifiOn()) webBegin();
   applyLedForMode();
 
   noteActivity();

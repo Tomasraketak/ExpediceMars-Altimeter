@@ -59,12 +59,25 @@ static void handleRoot() {
   server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
 }
 
+// __DATE__ ("Nov  8 2026") + __TIME__ -> "2026-11-08 14:05"
+static const char *fwBuildDate() {
+  static char out[20] = {0};
+  if (out[0]) return out;
+  static const char mon[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  const char *d = FW_BUILD_DATE;
+  int m = 0;
+  for (int i = 0; i < 12; i++) if (strncmp(d, mon + i * 3, 3) == 0) { m = i + 1; break; }
+  int day = atoi(d + 4), year = atoi(d + 7);
+  snprintf(out, sizeof out, "%04d-%02d-%02d %.5s", year, m, day, FW_BUILD_TIME);
+  return out;
+}
+
 static void handleStatus() {
   touch();
-  char buf[900];
+  char buf[960];
   String ssid = jsonEscape(s_ssid);
   snprintf(buf, sizeof buf,
-    "{\"fw\":\"%s\",\"mode\":%u,\"modeName\":\"%s\",\"armed\":%d,\"sensorOk\":%d,"
+    "{\"fw\":\"%s\",\"fwDate\":\"%s\",\"mode\":%u,\"modeName\":\"%s\",\"armed\":%d,\"sensorOk\":%d,"
     "\"padSet\":%d,\"padPa\":%.1f,\"padMsl\":%.1f,\"alt\":%.2f,\"altMsl\":%.2f,"
     "\"press\":%.1f,\"temp\":%.2f,\"vspeed\":%.2f,\"vbat\":%.2f,"
     "\"flightId\":%u,\"maxAlt\":%.2f,\"apogeeDone\":%d,"
@@ -72,7 +85,7 @@ static void handleStatus() {
     "\"launchM\":%.1f,\"apoDrop\":%.1f,"
     "\"fsUsed\":%u,\"fsTotal\":%u,\"uptime\":%lu,\"epoch\":%lu,\"boots\":%lu,"
     "\"ssid\":\"%s\",\"clients\":%u}",
-    FW_VERSION, (unsigned)st.mode, modeName(st.mode), st.armed ? 1 : 0,
+    FW_VERSION, fwBuildDate(), (unsigned)st.mode, modeName(st.mode), st.armed ? 1 : 0,
     st.sensorOk ? 1 : 0, st.padPa > 1000.0f ? 1 : 0, st.padPa, st.padMsl,
     st.altAgl, st.altAgl + st.padMsl, st.pressPa, st.tempC, st.vSpeed, st.vbat,
     (unsigned)st.flightId, st.maxAlt, st.apogeeDone ? 1 : 0,
@@ -104,11 +117,12 @@ static void handleFlights() {
     snprintf(buf, sizeof buf,
       "%s{\"id\":%u,\"name\":\"%s\",\"epoch\":%lu,\"apogee\":%.2f,\"apogeeT\":%lu,"
       "\"dur\":%lu,\"maxSpeed\":%.2f,\"samples\":%lu,\"padMsl\":%.1f,"
-      "\"done\":%d,\"recovered\":%d}",
+      "\"done\":%d,\"recovered\":%d,\"test\":%d}",
       first ? "" : ",", (unsigned)h.id, nm.c_str(), (unsigned long)h.epoch,
       h.apogeeM, (unsigned long)h.apogeeT, (unsigned long)h.durationMs,
       h.maxSpeed, (unsigned long)h.samples, h.padMsl,
-      (h.flags & FF_FINALIZED) ? 1 : 0, (h.flags & FF_RECOVERED) ? 1 : 0);
+      (h.flags & FF_FINALIZED) ? 1 : 0, (h.flags & FF_RECOVERED) ? 1 : 0,
+      (h.flags & FF_TEST) ? 1 : 0);
     server.sendContent(buf);
     first = false;
   }
@@ -258,6 +272,9 @@ static void handleDeleteAll() {
 }
 
 static void handleZero()   { touch(); webReq.zero = true;   server.send(200, "application/json", "{\"ok\":1}"); }
+static void handleWifiOff() { touch(); webReq.wifiOff = true; server.send(200, "application/json", "{\"ok\":1}"); }
+
+static void handleTest()   { touch(); webReq.test = true;   server.send(200, "application/json", "{\"ok\":1}"); }
 static void handleSleep()  { touch(); webReq.sleep = true;  server.send(200, "application/json", "{\"ok\":1}"); }
 
 static void handleArm() {
@@ -331,6 +348,8 @@ void webBegin() {
     server.on("/api/zero", HTTP_POST, handleZero);
     server.on("/api/arm", HTTP_POST, handleArm);
     server.on("/api/sleep", HTTP_POST, handleSleep);
+    server.on("/api/test", HTTP_POST, handleTest);
+    server.on("/api/wifioff", HTTP_POST, handleWifiOff);
     server.on("/api/settings", HTTP_POST, handleSettings);
     server.on("/api/time", HTTP_POST, handleTime);
     server.onNotFound(handleNotFound);

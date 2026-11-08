@@ -40,6 +40,7 @@ struct AltimeterState {
   bool     apogeeDone = false;
   float    maxSpeed = 0.0f;
   bool     recovered = false;  // let byl obnoven po resetu
+  bool     testFlight = false; // testovaci let (bez prahu startu, viz TEST_LAND_BLOCK_MS)
 
   // --- posledni ukonceny let ---
   uint16_t lastFlightId = 0;

@@ -8,6 +8,8 @@ struct WebRequests {
   bool arm = false;
   bool disarm = false;
   bool sleep = false;
+  bool test = false;
+  bool wifiOff = false;   // uzivatel vypnul WiFi z webu      // kalibrace + testovaci let hned
 };
 extern WebRequests webReq;
 
